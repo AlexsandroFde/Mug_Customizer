@@ -1,3 +1,5 @@
+import type { MugPart } from '../../config/mugColors'
+import { getPartInfo } from '../../config/mugColors'
 import { useCoarsePointer } from '../../hooks/useCoarsePointer'
 import { Icon } from '../ui/Icon'
 import { SegmentedControl, type SegmentedOption } from '../ui/SegmentedControl'
@@ -13,8 +15,11 @@ interface ViewerOverlayProps {
   onZoom(direction: 1 | -1): void
   guidesVisible: boolean
   onToggleGuides(): void
+  /** Dica de uso inicial, até a primeira vez que o usuário gira ou aproxima a caneca. */
+  showIntroHint: boolean
+  /** Parte sob o ponteiro quando a seleção de partes está ativa. */
+  hoveredPart: MugPart | null
   loadingFileName: string | null
-  onRequestUpload(): void
   contextLost: boolean
   onRestore(): void
 }
@@ -42,7 +47,9 @@ const MODE_OPTIONS: ReadonlyArray<SegmentedOption<InteractionMode>> = [
     label: (
       <>
         <Icon name="move" size={18} />
-        <span>Mover estampa</span>
+        <span>
+          Mover<span className="mode-label-extra"> estampa</span>
+        </span>
       </>
     ),
     description: 'Mover a estampa sobre a caneca',
@@ -58,73 +65,77 @@ export function ViewerOverlay({
   onZoom,
   guidesVisible,
   onToggleGuides,
+  showIntroHint,
+  hoveredPart,
   loadingFileName,
-  onRequestUpload,
   contextLost,
   onRestore,
 }: ViewerOverlayProps) {
   const touch = useCoarsePointer()
-  const hint =
-    mode === 'edit'
-      ? touch
-        ? 'Arraste na área de impressão para mover a estampa'
-        : 'Arraste sobre a área de impressão para mover a estampa. Fora dela, a caneca gira.'
-      : touch
-        ? 'Arraste para girar · Use dois dedos para aproximar'
-        : 'Arraste para girar · Role para aproximar'
 
   return (
     <div className="viewer-overlay">
-      <p className={`viewer-hint${mode === 'edit' ? ' viewer-hint--edit' : ''}`} aria-live="polite">
-        {mode === 'edit' && <Icon name="move" size={16} />}
-        {hint}
-      </p>
+      {mode === 'edit' ? (
+        <p className="viewer-banner" role="status">
+          <Icon name="move" size={16} />
+          {touch ? 'Arraste na área de impressão para mover a estampa' : 'Arraste sobre a área de impressão para mover a estampa'}
+        </p>
+      ) : (
+        hoveredPart && (
+          <p className="viewer-tag" aria-hidden="true">
+            <Icon name="palette" size={15} />
+            {touch ? 'Toque' : 'Clique'} para editar a cor {getPartInfo(hoveredPart).ofLabel}
+          </p>
+        )
+      )}
 
-      <div className="viewer-views">
-        <nav className="viewer-views__group" aria-label="Vistas da caneca">
+      <div className="toolbar viewer-views">
+        <nav className="toolbar__group" aria-label="Vistas da caneca">
           {VIEWS.map(({ view, label, description }) => (
-            <button key={view} type="button" className="chip" title={description} onClick={() => onView(view)}>
+            <button key={view} type="button" className="toolbar__button" title={description} onClick={() => onView(view)}>
               {label}
             </button>
           ))}
         </nav>
-        <span className="viewer-views__divider" aria-hidden="true" />
+        <span className="toolbar__divider" aria-hidden="true" />
         <button
           type="button"
-          className="chip viewer-guides"
+          className="toolbar__button toolbar__button--toggle"
           onClick={onToggleGuides}
           aria-pressed={guidesVisible}
-          aria-label="Guias de edição"
           title={guidesVisible ? 'Ocultar as guias e ver o resultado final' : 'Mostrar a área de impressão na caneca'}
         >
           <Icon name={guidesVisible ? 'eye' : 'eyeOff'} size={17} />
-          <span className="viewer-guides__label">Guias</span>
+          <span className="toolbar__label">Guias</span>
         </button>
       </div>
+
+      {showIntroHint && mode === 'orbit' && !loadingFileName && (
+        <p className="viewer-hint" aria-hidden="true">
+          {touch ? 'Arraste para girar · Use dois dedos para aproximar' : 'Arraste para girar · Role para aproximar'}
+        </p>
+      )}
 
       <div className="viewer-bottom">
         {hasImage ? (
           <SegmentedControl label="Modo de interação" options={MODE_OPTIONS} value={mode} onChange={onModeChange} />
         ) : (
-          <button type="button" className="button button--primary viewer-cta" onClick={onRequestUpload}>
-            <Icon name="upload" size={18} />
-            Adicionar imagem
-          </button>
+          <span />
         )}
 
-        <div className="viewer-zoom" role="group" aria-label="Zoom e vista">
-          <button type="button" className="icon-button" onClick={() => onZoom(-1)} aria-label="Afastar" title="Afastar">
+        <div className="toolbar" role="group" aria-label="Zoom e enquadramento">
+          <button type="button" className="toolbar__icon" onClick={() => onZoom(-1)} aria-label="Afastar" title="Afastar">
             <Icon name="zoomOut" />
           </button>
-          <button type="button" className="icon-button" onClick={() => onZoom(1)} aria-label="Aproximar" title="Aproximar">
+          <button type="button" className="toolbar__icon" onClick={() => onZoom(1)} aria-label="Aproximar" title="Aproximar">
             <Icon name="zoomIn" />
           </button>
           <button
             type="button"
-            className="icon-button"
+            className="toolbar__icon"
             onClick={onResetView}
-            aria-label="Voltar à vista inicial"
-            title="Voltar à vista inicial"
+            aria-label="Voltar ao enquadramento inicial"
+            title="Voltar ao enquadramento inicial"
           >
             <Icon name="focus" />
           </button>

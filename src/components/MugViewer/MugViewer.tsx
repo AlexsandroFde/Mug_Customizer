@@ -2,14 +2,15 @@ import { ContactShadows } from '@react-three/drei'
 import { Canvas } from '@react-three/fiber'
 import { forwardRef, useCallback, useImperativeHandle, useRef, useState, type KeyboardEvent } from 'react'
 import * as THREE from 'three'
-import type { MugColors } from '../../config/mugColors'
+import type { MugPart, ResolvedMugColors } from '../../config/mugColors'
 import type { ChangeKind, PrintImage } from '../../hooks/useMugCustomization'
 import type { PrintArea } from '../../lib/printArea'
 import { printOffsetToAngle, type PrintTransform } from '../../lib/printMapping'
 import { ErrorBoundary } from '../ui/ErrorBoundary'
 import { CameraRig, type CameraRigHandle, type ViewPreset } from './CameraRig'
-import { MugModel } from './MugModel'
+import { MugModel, type PartHighlight } from './MugModel'
 import { PrintDragController } from './PrintDragController'
+import { SceneCapture, type SceneCaptureHandle } from './SceneCapture'
 import { StudioLighting } from './StudioLighting'
 import { ViewerOverlay } from './ViewerOverlay'
 
@@ -19,13 +20,15 @@ export interface MugViewerHandle {
   /** Gira a câmera até a posição horizontal informada (cm, no referencial da região imprimível). */
   focusPrint(offsetX: number): void
   setView(view: ViewPreset): void
+  /** PNG da vista atual, sem guias nem destaques. */
+  capture(): Promise<Blob | null>
 }
 
 interface MugViewerProps {
   image: PrintImage | null
   transform: PrintTransform
   area: PrintArea
-  colors: MugColors
+  colors: ResolvedMugColors
   animate: boolean
   mode: InteractionMode
   onModeChange(mode: InteractionMode): void
@@ -35,7 +38,10 @@ interface MugViewerProps {
   loadingFileName: string | null
   onPrintMove(offset: Pick<PrintTransform, 'offsetX' | 'offsetY'>, kind: ChangeKind): void
   onDraggingChange(dragging: boolean): void
-  onRequestUpload(): void
+  /** Permite selecionar partes da caneca clicando nelas (na aba Cores). */
+  pickable: boolean
+  highlight: PartHighlight | null
+  onPartSelect(part: MugPart): void
 }
 
 const ROTATE_STEP = THREE.MathUtils.degToRad(15)
@@ -55,24 +61,34 @@ export const MugViewer = forwardRef<MugViewerHandle, MugViewerProps>(function Mu
     loadingFileName,
     onPrintMove,
     onDraggingChange,
-    onRequestUpload,
+    pickable,
+    highlight,
+    onPartSelect,
   },
   ref,
 ) {
   const [container, setContainer] = useState<HTMLDivElement | null>(null)
   const rig = useRef<CameraRigHandle>(null)
+  const capturer = useRef<SceneCaptureHandle>(null)
   const [canvasKey, setCanvasKey] = useState(0)
   const [contextLost, setContextLost] = useState(false)
   const [printHover, setPrintHover] = useState(false)
   const [printDragging, setPrintDragging] = useState(false)
+  const [hoveredPart, setHoveredPart] = useState<MugPart | null>(null)
+  const [interacted, setInteracted] = useState(false)
 
   const setView = useCallback((view: ViewPreset) => rig.current?.setView(view), [])
   useImperativeHandle(
     ref,
-    () => ({ focusPrint: (offsetX) => rig.current?.faceAngle(printOffsetToAngle(offsetX)), setView }),
+    () => ({
+      focusPrint: (offsetX) => rig.current?.faceAngle(printOffsetToAngle(offsetX)),
+      setView,
+      capture: () => capturer.current?.capture() ?? Promise.resolve(null),
+    }),
     [setView],
   )
   const zoom = useCallback((direction: 1 | -1) => rig.current?.zoom(direction), [])
+  const markInteracted = useCallback(() => setInteracted(true), [])
 
   const handleDraggingChange = useCallback(
     (dragging: boolean) => {
@@ -87,7 +103,8 @@ export const MugViewer = forwardRef<MugViewerHandle, MugViewerProps>(function Mu
   )
 
   const editing = mode === 'edit' && !!image
-  /** Vista para a qual o botão de "vista inicial" retorna. */
+  const picking = pickable && !editing
+  /** Enquadramento para o qual o botão de vista inicial retorna. */
   const homeView: ViewPreset = image ? 'print' : 'initial'
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -106,6 +123,7 @@ export const MugViewer = forwardRef<MugViewerHandle, MugViewerProps>(function Mu
     const action = actions[event.key]
     if (!action) return
     event.preventDefault()
+    setInteracted(true)
     action()
   }
 
@@ -115,11 +133,12 @@ export const MugViewer = forwardRef<MugViewerHandle, MugViewerProps>(function Mu
       className="viewer"
       data-mode={editing ? 'edit' : 'orbit'}
       data-print-hover={editing && printHover ? 'true' : undefined}
+      data-part-hover={picking && hoveredPart ? 'true' : undefined}
       data-dragging={printDragging ? 'true' : undefined}
       tabIndex={0}
       role="group"
       aria-roledescription="visualização 3D"
-      aria-label="Caneca em 3D. Arraste para girar e use a rolagem ou o gesto de pinça para aproximar. Pelo teclado: setas giram, + e - aproximam e Home volta à vista inicial."
+      aria-label="Caneca em 3D. Arraste para girar e use a rolagem ou o gesto de pinça para aproximar. Pelo teclado: setas giram, + e - aproximam e Home volta ao enquadramento inicial."
       onKeyDown={onKeyDown}
     >
       <ErrorBoundary
@@ -160,9 +179,13 @@ export const MugViewer = forwardRef<MugViewerHandle, MugViewerProps>(function Mu
             animate={animate}
             guidesVisible={guidesVisible}
             colors={colors}
+            pickable={picking}
+            highlight={highlight}
+            onPartHover={setHoveredPart}
+            onPartSelect={onPartSelect}
           />
           <ContactShadows position={[0, 0.001, 0]} scale={26} resolution={1024} far={7} blur={2.4} opacity={0.5} color="#1f2633" frames={1} />
-          <CameraRig ref={rig} printOffsetX={area.offsetX} />
+          <CameraRig ref={rig} printOffsetX={area.offsetX} onUserControl={markInteracted} />
           <PrintDragController
             enabled={editing}
             container={container}
@@ -172,6 +195,7 @@ export const MugViewer = forwardRef<MugViewerHandle, MugViewerProps>(function Mu
             onDraggingChange={handleDraggingChange}
             onHoverChange={setPrintHover}
           />
+          <SceneCapture ref={capturer} />
         </Canvas>
       </ErrorBoundary>
 
@@ -179,13 +203,17 @@ export const MugViewer = forwardRef<MugViewerHandle, MugViewerProps>(function Mu
         hasImage={!!image}
         mode={editing ? 'edit' : 'orbit'}
         onModeChange={onModeChange}
-        onView={setView}
+        onView={(view) => {
+          setInteracted(true)
+          setView(view)
+        }}
         onResetView={() => setView(homeView)}
         onZoom={zoom}
         guidesVisible={guidesVisible}
         onToggleGuides={onToggleGuides}
+        showIntroHint={!interacted}
+        hoveredPart={picking ? hoveredPart : null}
         loadingFileName={loadingFileName}
-        onRequestUpload={onRequestUpload}
         contextLost={contextLost}
         onRestore={() => {
           setContextLost(false)

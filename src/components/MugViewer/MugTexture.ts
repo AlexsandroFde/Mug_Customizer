@@ -9,7 +9,7 @@
  */
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
-import { MUG, PRINTABLE } from '../../config/mugSpec'
+import { GLAZE_COLOR, MUG, PRINTABLE } from '../../config/mugSpec'
 import type { PrintImage } from '../../hooks/useMugCustomization'
 import { releaseCanvas } from '../../lib/imageProcessing'
 
@@ -31,6 +31,8 @@ export interface PrintUniforms {
   uImageHalfSize: THREE.IUniform<THREE.Vector2>
   /** Cosseno e seno da rotação (anti-horária) da imagem no plano da área de impressão. */
   uImageRotation: THREE.IUniform<THREE.Vector2>
+  /** Branco do esmalte, usado como fundo da tinta (cor linear). */
+  uPrintBase: THREE.IUniform<THREE.Color>
   /** Intensidade das guias de edição (0 = ocultas). */
   uGuides: THREE.IUniform<number>
   uAreaGuideColor: THREE.IUniform<THREE.Color>
@@ -117,6 +119,7 @@ uniform vec4 uAreaLimits;
 uniform vec2 uImageCenter;
 uniform vec2 uImageHalfSize;
 uniform vec2 uImageRotation;
+uniform vec3 uPrintBase;
 uniform float uGuides;
 uniform vec3 uAreaGuideColor;
 uniform vec3 uLimitGuideColor;
@@ -179,19 +182,27 @@ const FRAGMENT_MAIN = /* glsl */ `
   float coverage = ink.a * areaMask * printCoverage(imageDistance, printPixel) * uPrintEnabled;
   vec3 inkColor = printSrgbToLinear(clamp(ink.rgb / max(ink.a, 1e-4), 0.0, 1.0));
 
-  // Na sublimação a tinta tinge o esmalte: o branco da imagem é o próprio branco da cerâmica.
-  diffuseColor.rgb *= mix(vec3(1.0), inkColor, coverage);
+  // A tinta é aplicada como numa impressão sobre fundo branco: a imagem continua fiel e legível
+  // em qualquer cor de caneca, e as partes transparentes mostram a cor da cerâmica. Na caneca
+  // branca isto equivale à sublimação: o branco da imagem é o próprio branco do esmalte.
+  vec3 glaze = diffuseColor.rgb;
+  vec3 underbase = max(glaze, uPrintBase);
+  diffuseColor.rgb = mix(glaze, underbase * inkColor, coverage);
 
   // Guias de edição (nunca fazem parte da impressão): limite físico hachurado, área de impressão
-  // tracejada (em âmbar e contínua onde encosta no limite) e contorno da imagem.
+  // tracejada (em âmbar e contínua onde encosta no limite) e contorno da imagem. Em cerâmicas
+  // escuras, as marcações clareiam em vez de escurecer, para continuarem visíveis.
   if (uGuides > 0.001) {
+    float darkGlaze = 1.0 - smoothstep(0.06, 0.3, dot(glaze, vec3(0.2126, 0.7152, 0.0722)));
     float outsidePrintable = 1.0 - printCoverage(printableDistance, printPixel);
     float hatch = step(0.5, fract((printPoint.x + printPoint.y) / 0.55));
-    diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * (0.86 - 0.08 * hatch), outsidePrintable * uGuides);
+    vec3 hatched = mix(diffuseColor.rgb * (0.86 - 0.08 * hatch), diffuseColor.rgb + 0.05 + 0.05 * hatch, darkGlaze);
+    diffuseColor.rgb = mix(diffuseColor.rgb, hatched, outsidePrintable * uGuides);
 
     // Dentro do limite físico, mas fora da área escolhida: só um leve esmaecimento.
     float outsideArea = (1.0 - printCoverage(areaDistance, printPixel)) * (1.0 - outsidePrintable);
-    diffuseColor.rgb *= 1.0 - 0.07 * outsideArea * uGuides;
+    vec3 dimmed = mix(diffuseColor.rgb * 0.93, diffuseColor.rgb + 0.025, darkGlaze);
+    diffuseColor.rgb = mix(diffuseColor.rgb, dimmed, outsideArea * uGuides);
 
     vec2 areaGap = uAreaHalf - abs(areaLocal);
     bool verticalEdge = areaGap.x < areaGap.y;
@@ -200,11 +211,13 @@ const FRAGMENT_MAIN = /* glsl */ `
       : (areaLocal.y < 0.0 ? uAreaLimits.z : uAreaLimits.w);
     float dash = max(step(0.42, fract((verticalEdge ? printPoint.y : printPoint.x) / 0.45)), atLimit);
     vec3 edgeColor = mix(uAreaGuideColor, uLimitGuideColor, atLimit);
+    edgeColor = mix(edgeColor, vec3(1.0), 0.45 * darkGlaze);
     diffuseColor.rgb = mix(diffuseColor.rgb, edgeColor, printLine(areaDistance, printPixel) * dash * uGuides);
 
     // O contorno da imagem também aparece fora da área, para mostrar o que será cortado.
     float outline = printLine(imageDistance, printPixel) * uPrintEnabled * (1.0 - outsidePrintable);
-    diffuseColor.rgb = mix(diffuseColor.rgb, uImageGuideColor, outline * 0.8 * uGuides);
+    vec3 imageGuide = mix(uImageGuideColor, vec3(1.0), 0.45 * darkGlaze);
+    diffuseColor.rgb = mix(diffuseColor.rgb, imageGuide, outline * 0.8 * uGuides);
   }
 }
 `
@@ -226,6 +239,7 @@ export function createPrintMaterial(parameters: THREE.MeshPhysicalMaterialParame
     uImageCenter: { value: new THREE.Vector2() },
     uImageHalfSize: { value: new THREE.Vector2(1, 1) },
     uImageRotation: { value: new THREE.Vector2(1, 0) },
+    uPrintBase: { value: new THREE.Color(GLAZE_COLOR) },
     uGuides: { value: 0 },
     uAreaGuideColor: { value: new THREE.Color(GUIDE_COLORS.area) },
     uLimitGuideColor: { value: new THREE.Color(GUIDE_COLORS.limit) },
@@ -242,10 +256,16 @@ export function createPrintMaterial(parameters: THREE.MeshPhysicalMaterialParame
       .replace('#include <color_fragment>', FRAGMENT_MAIN)
   }
   material.customProgramCacheKey = () => 'mug-print'
+  // Permite que a exportação da imagem final desligue as guias (SceneCapture.tsx).
+  material.userData.printUniforms = uniforms
 
   return {
     material,
     uniforms,
+    /** Cor-base da cerâmica sob a estampa. */
+    setBodyColor(color: string) {
+      material.color.set(color)
+    },
     /** Troca a imagem da estampa (null remove). */
     setTexture(texture: THREE.Texture | null) {
       uniforms.uPrintMap.value = texture ?? emptyTexture

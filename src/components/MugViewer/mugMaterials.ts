@@ -1,12 +1,12 @@
 /**
  * Materiais cerâmicos da caneca (a estampa fica em MugTexture.ts).
  *
- * Cada região personalizável (alça, borda e interior) tem um material próprio; base e calcanhar
- * usam o esmalte original. Trocar uma cor altera só o material daquela região, sem recriar
- * geometria nem recompilar shaders.
+ * O corpo (base e calcanhar, além da parede externa com a estampa) usa a cor-base; alça, borda e
+ * interior têm materiais próprios, que recebem a cor já resolvida de cada parte. Trocar uma cor
+ * altera só o material daquela parte, sem recriar geometria nem recompilar shaders.
  */
 import * as THREE from 'three'
-import type { MugColorRegion, MugColors } from '../../config/mugColors'
+import { MUG_COLOR_REGIONS, type MugColorRegion, type ResolvedMugColors } from '../../config/mugColors'
 import { GLAZE_COLOR, MUG } from '../../config/mugSpec'
 import type { CavityRegion } from './mugGeometry'
 
@@ -154,9 +154,10 @@ export function createMugMaterials(cavityVisibility: Record<CavityRegion, number
     bisque,
     regions,
     ao,
-    /** Aplica as cores das regiões personalizáveis; as demais regiões não são tocadas. */
-    setColors(colors: MugColors) {
-      for (const region of Object.keys(regions) as MugColorRegion[]) regions[region].color.set(colors[region])
+    /** Aplica a cor de cada parte ao material dela (o anel de apoio, sem esmalte, não muda). */
+    setColors(colors: ResolvedMugColors) {
+      glaze.color.set(colors.body)
+      for (const region of MUG_COLOR_REGIONS) regions[region].color.set(colors[region])
       updateCavityAo()
     },
     dispose() {

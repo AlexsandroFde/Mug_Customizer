@@ -1,13 +1,14 @@
-import type { Ref } from 'react'
+import type { MugColorRegion, MugPart } from '../../config/mugColors'
 import type {
+  AreaDimension,
   ChangeKind,
-  CustomizationActions,
   CustomizationState,
   PrintSummary,
 } from '../../hooks/useMugCustomization'
-import { formatCm } from '../../lib/format'
-import type { PrintSide, PrintTransform } from '../../lib/printMapping'
-import { ImageUploader, type ImageUploaderHandle } from '../ImageUploader/ImageUploader'
+import type { AreaShape, PrintArea } from '../../lib/printArea'
+import type { FitMode, PrintSide, PrintTransform } from '../../lib/printMapping'
+import { ImageUploader } from '../ImageUploader/ImageUploader'
+import { Icon } from '../ui/Icon'
 import { TabPanel, Tabs, type TabItem } from '../ui/Tabs'
 import { MugColorEditor } from './MugColorEditor'
 import { PrintAreaControls } from './PrintAreaControls'
@@ -16,17 +17,43 @@ import { PrintLayoutEditor } from './PrintLayoutEditor'
 
 export type PanelTab = 'image' | 'area' | 'colors'
 
+/** Ações que o painel dispara; cada uma corresponde a uma ação do estado de personalização. */
+export interface PanelActions {
+  removeImage(): void
+  dismissError(): void
+  setFit(fit: FitMode): void
+  center(): void
+  reset(): void
+  setArea(area: PrintArea, kind?: ChangeKind): void
+  setAreaShape(shape: AreaShape): void
+  setAreaSize(dimension: AreaDimension, value: number): void
+  moveArea(offset: { offsetX?: number; offsetY?: number }, kind?: ChangeKind): void
+  centerArea(): void
+  resetArea(): void
+  setBodyColor(color: string): void
+  resetBodyColor(): void
+  setPartColor(region: MugColorRegion, color: string): void
+  linkPart(region: MugColorRegion): void
+  linkAllParts(): void
+}
+
 interface CustomizationPanelProps {
   state: CustomizationState
   summary: PrintSummary | null
-  actions: CustomizationActions
-  uploaderRef: Ref<ImageUploaderHandle>
+  actions: PanelActions
   tab: PanelTab
   onTabChange(tab: PanelTab): void
+  selectedPart: MugPart
+  onSelectPart(part: MugPart): void
   onTransformChange(patch: Partial<PrintTransform>, kind: ChangeKind): void
   onAreaSideChange(side: PrintSide): void
-  onRequestUpload(): void
+  onOpenFilePicker(): void
   onLayoutDraggingChange(dragging: boolean): void
+  /** Ações gerais, no rodapé. */
+  pristine: boolean
+  onResetAll(): void
+  exporting: boolean
+  onExport(): void
 }
 
 const TABS: ReadonlyArray<TabItem<PanelTab>> = [
@@ -41,117 +68,147 @@ export function CustomizationPanel({
   state,
   summary,
   actions,
-  uploaderRef,
   tab,
   onTabChange,
+  selectedPart,
+  onSelectPart,
   onTransformChange,
   onAreaSideChange,
-  onRequestUpload,
+  onOpenFilePicker,
   onLayoutDraggingChange,
+  pristine,
+  onResetAll,
+  exporting,
+  onExport,
 }: CustomizationPanelProps) {
-  const { image, transform, area, upload } = state
-  const target = tab === 'area' ? 'area' : 'image'
+  const { image, transform, area, upload, colors } = state
+
+  const layout = (target: 'image' | 'area') => (
+    <PrintLayoutEditor
+      image={image}
+      transform={transform}
+      area={area}
+      target={target}
+      wallColor={colors.body}
+      onImageMove={onTransformChange}
+      onAreaChange={actions.setArea}
+      onDraggingChange={onLayoutDraggingChange}
+    />
+  )
 
   return (
     <div className="panel">
       <header className="panel__header">
-        <p className="panel__eyebrow">Caneca de cerâmica · 325 ml</p>
-        <h1 className="panel__title">Personalize sua caneca</h1>
-        <p className="panel__lead">Envie uma imagem, defina onde ela será impressa e confira o resultado em 3D.</p>
+        <h1 className="panel__title">Personalizar caneca</h1>
+        <p className="panel__subtitle">Cerâmica · 325 ml</p>
       </header>
 
-      <section className="panel__section" aria-labelledby="section-image">
-        <h2 id="section-image" className="section-title">
-          Imagem
-        </h2>
-        <ImageUploader
-          ref={uploaderRef}
-          image={image}
-          status={upload}
-          onFile={actions.loadFile}
-          onRemove={actions.removeImage}
-          onDismissError={actions.dismissError}
-        />
-      </section>
-
-      <section className="panel__section" aria-labelledby="section-layout">
-        <div className="section-heading">
-          <h2 id="section-layout" className="section-title">
-            Caneca desenrolada
-          </h2>
-          <span className="section-meta" aria-label="Dimensões da área de impressão">
-            Área: {formatCm(area.width)} × {formatCm(area.height)}
-          </span>
-        </div>
-        <PrintLayoutEditor
-          image={image}
-          transform={transform}
-          area={area}
-          target={target}
-          onImageMove={onTransformChange}
-          onAreaChange={actions.setArea}
-          onDraggingChange={onLayoutDraggingChange}
-        />
-        <ul className="layout-legend" aria-label="Legenda">
-          <li>
-            <span className="legend-swatch legend-swatch--area" aria-hidden="true" />
-            Área de impressão
-          </li>
-          {image && (
-            <li>
-              <span className="legend-swatch legend-swatch--image" aria-hidden="true" />
-              Imagem
-            </li>
-          )}
-          <li>
-            <span className="legend-swatch legend-swatch--limit" aria-hidden="true" />
-            No limite
-          </li>
-          <li>
-            <span className="legend-swatch legend-swatch--blocked" aria-hidden="true" />
-            Sem impressão
-          </li>
-        </ul>
-        <p className="field-help">
-          {target === 'area'
-            ? 'Arraste a área para movê-la ou puxe os quadradinhos para redimensioná-la.'
-            : image
-              ? 'Arraste a imagem para posicioná-la dentro da área. Para mudar a própria área, use a aba Área.'
-              : 'A imagem será impressa dentro da área tracejada. Ajuste-a na aba Área.'}
-        </p>
-      </section>
-
       <div className="panel__tabs">
-        <Tabs label="Opções de personalização" idPrefix={TABS_ID} tabs={TABS} active={tab} onChange={onTabChange} />
+        <Tabs label="Seções da personalização" idPrefix={TABS_ID} tabs={TABS} active={tab} onChange={onTabChange} />
       </div>
 
-      <TabPanel idPrefix={TABS_ID} id={tab} className="panel__section panel__section--tab">
+      <TabPanel idPrefix={TABS_ID} id={tab} className="panel__body">
         {tab === 'image' && (
-          <PrintImageControls
-            image={image}
-            transform={transform}
-            area={area}
-            summary={summary}
-            onTransformChange={onTransformChange}
-            onFitChange={actions.setFit}
-            onCenter={actions.center}
-            onReset={actions.reset}
-            onRequestUpload={onRequestUpload}
-          />
+          <>
+            <ImageUploader
+              image={image}
+              status={upload}
+              onOpen={onOpenFilePicker}
+              onRemove={actions.removeImage}
+              onDismissError={actions.dismissError}
+            />
+            {image && summary ? (
+              <>
+                <figure className="layout-figure">
+                  {layout('image')}
+                  <figcaption className="field-hint">Arraste a imagem para posicioná-la dentro da área tracejada.</figcaption>
+                </figure>
+                <PrintImageControls
+                  image={image}
+                  transform={transform}
+                  area={area}
+                  summary={summary}
+                  bodyColor={colors.body}
+                  onTransformChange={onTransformChange}
+                  onFitChange={actions.setFit}
+                  onCenter={actions.center}
+                  onReset={actions.reset}
+                />
+              </>
+            ) : (
+              <p className="empty-note">
+                Se preferir, comece pelas{' '}
+                <button type="button" className="link-button" onClick={() => onTabChange('colors')}>
+                  cores da caneca
+                </button>{' '}
+                e adicione a imagem depois.
+              </p>
+            )}
+          </>
         )}
+
         {tab === 'area' && (
-          <PrintAreaControls
-            area={area}
-            onShapeChange={actions.setAreaShape}
-            onSizeChange={actions.setAreaSize}
-            onMove={actions.moveArea}
-            onSideChange={onAreaSideChange}
-            onCenter={actions.centerArea}
-            onReset={actions.resetArea}
+          <>
+            <figure className="layout-figure">
+              {layout('area')}
+              <figcaption className="layout-legend">
+                <span>
+                  <span className="legend-mark legend-mark--area" aria-hidden="true" />
+                  Área
+                </span>
+                {image && (
+                  <span>
+                    <span className="legend-mark legend-mark--image" aria-hidden="true" />
+                    Imagem
+                  </span>
+                )}
+                <span>
+                  <span className="legend-mark legend-mark--limit" aria-hidden="true" />
+                  No limite
+                </span>
+                <span>
+                  <span className="legend-mark legend-mark--blocked" aria-hidden="true" />
+                  Sem impressão
+                </span>
+              </figcaption>
+            </figure>
+            <p className="field-hint">Arraste a área para movê-la ou puxe os quadradinhos para redimensioná-la.</p>
+            <PrintAreaControls
+              area={area}
+              onShapeChange={actions.setAreaShape}
+              onSizeChange={actions.setAreaSize}
+              onMove={actions.moveArea}
+              onSideChange={onAreaSideChange}
+              onCenter={actions.centerArea}
+              onReset={actions.resetArea}
+            />
+          </>
+        )}
+
+        {tab === 'colors' && (
+          <MugColorEditor
+            colors={colors}
+            selected={selectedPart}
+            onSelect={onSelectPart}
+            onBodyColor={actions.setBodyColor}
+            onResetBody={actions.resetBodyColor}
+            onApplyToAll={actions.linkAllParts}
+            onPartColor={actions.setPartColor}
+            onLinkPart={actions.linkPart}
           />
         )}
-        {tab === 'colors' && <MugColorEditor colors={state.colors} onChange={actions.setColor} onReset={actions.resetColor} />}
       </TabPanel>
+
+      <footer className="panel__footer">
+        <button type="button" className="button button--ghost" onClick={onResetAll} disabled={pristine}>
+          <Icon name="reset" size={18} />
+          Redefinir
+        </button>
+        <button type="button" className="button button--primary" onClick={onExport} disabled={exporting} aria-busy={exporting}>
+          {exporting ? <span className="spinner spinner--sm spinner--inverse" aria-hidden="true" /> : <Icon name="download" size={18} />}
+          {exporting ? 'Gerando imagem…' : 'Baixar imagem'}
+        </button>
+      </footer>
     </div>
   )
 }

@@ -1,26 +1,47 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { CustomizationPanel, type PanelTab } from './components/CustomizationPanel/CustomizationPanel'
-import type { ImageUploaderHandle } from './components/ImageUploader/ImageUploader'
+import { CustomizationPanel, type PanelActions, type PanelTab } from './components/CustomizationPanel/CustomizationPanel'
+import { ImageFileInput, type ImageFileInputHandle } from './components/ImageUploader/ImageUploader'
+import type { PartHighlight } from './components/MugViewer/MugModel'
 import { MugViewer, type InteractionMode, type MugViewerHandle } from './components/MugViewer/MugViewer'
 import { Icon } from './components/ui/Icon'
+import { Toast, type ToastMessage } from './components/ui/Toast'
+import { resolveMugColors, type MugPart } from './config/mugColors'
 import { useFileDrop } from './hooks/useFileDrop'
-import { useMugCustomization, type AreaDimension, type ChangeKind } from './hooks/useMugCustomization'
+import { isPristine, useMugCustomization, type AreaDimension, type ChangeKind } from './hooks/useMugCustomization'
 import { getAreaSideOffset, type AreaShape, type PrintArea } from './lib/printArea'
 import type { FitMode, PrintSide, PrintTransform } from './lib/printMapping'
 
 /** Tempo que as guias continuam visíveis na caneca depois do último ajuste da estampa. */
 const GUIDES_LINGER_MS = 1200
+const EXPORT_FILE_NAME = 'caneca-personalizada.png'
+
+function downloadBlob(blob: Blob, fileName: string) {
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = fileName
+  link.click()
+  // O download já começou; o endereço temporário pode ser liberado logo depois.
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
 
 export default function App() {
   const { state, summary, actions } = useMugCustomization()
   const viewer = useRef<MugViewerHandle>(null)
-  const uploader = useRef<ImageUploaderHandle>(null)
+  const filePicker = useRef<ImageFileInputHandle>(null)
   const [mode, setMode] = useState<InteractionMode>('orbit')
   const [tab, setTab] = useState<PanelTab>('image')
+  const [selectedPart, setSelectedPart] = useState<MugPart>('body')
+  const [highlight, setHighlight] = useState<PartHighlight | null>(null)
   const [draggingIn3d, setDraggingIn3d] = useState(false)
   const [draggingIn2d, setDraggingIn2d] = useState(false)
   const [recentlyAdjusted, setRecentlyAdjusted] = useState(false)
+  const [toast, setToast] = useState<ToastMessage | null>(null)
+  const [exporting, setExporting] = useState(false)
   const lingerTimer = useRef<number | undefined>(undefined)
+  const toastId = useRef(0)
+
+  const colors = useMemo(() => resolveMugColors(state.colors), [state.colors])
 
   /**
    * Guias de edição na caneca. Aparecem sozinhas enquanto o usuário configura a área (aba Área)
@@ -56,7 +77,7 @@ export default function App() {
   )
 
   // Ajustar a área é configurá-la: as guias voltam a aparecer, mesmo que tenham sido ocultadas.
-  const panelActions = useMemo(
+  const panelActions = useMemo<PanelActions>(
     () => ({
       ...actions,
       setFit: (fit: FitMode) => {
@@ -107,8 +128,44 @@ export default function App() {
     showGuides()
   }
 
-  // Ao aplicar uma imagem nova, enquadra a área de impressão, onde a estampa começa centralizada.
+  /** Seleciona uma parte (pela lista ou clicando na caneca) e a destaca brevemente no 3D. */
+  const selectPart = useCallback((part: MugPart) => {
+    setSelectedPart(part)
+    setTab('colors')
+    setHighlight({ part, key: Date.now() })
+  }, [])
+
+  const resetAll = () => {
+    const snapshot = { transform: state.transform, area: state.area, colors: state.colors }
+    actions.resetAll()
+    setToast({
+      id: ++toastId.current,
+      text: 'Estampa, área e cores voltaram ao padrão.',
+      action: { label: 'Desfazer', run: () => actions.restore(snapshot) },
+    })
+  }
+
+  const exportImage = async () => {
+    setExporting(true)
+    try {
+      const blob = await viewer.current?.capture()
+      if (!blob) throw new Error('captura vazia')
+      downloadBlob(blob, EXPORT_FILE_NAME)
+    } catch (error) {
+      console.error(error)
+      setToast({ id: ++toastId.current, text: 'Não foi possível gerar a imagem. Tente novamente.' })
+    } finally {
+      setExporting(false)
+    }
+  }
+
+  // Uma imagem nova abre a aba da estampa e enquadra a área de impressão.
   const imageId = state.image?.id
+  const [seenImageId, setSeenImageId] = useState(imageId)
+  if (seenImageId !== imageId) {
+    setSeenImageId(imageId)
+    if (imageId !== undefined) setTab('image')
+  }
   useEffect(() => {
     if (imageId !== undefined) viewer.current?.setView('print')
   }, [imageId])
@@ -124,7 +181,6 @@ export default function App() {
   }, [mode])
 
   const dropActive = useFileDrop(actions.loadFile)
-  const requestUpload = () => uploader.current?.open()
 
   return (
     <div className="app">
@@ -134,7 +190,7 @@ export default function App() {
           image={state.image}
           transform={state.transform}
           area={state.area}
-          colors={state.colors}
+          colors={colors}
           animate={state.changeKind === 'discrete'}
           mode={mode}
           onModeChange={setMode}
@@ -143,8 +199,11 @@ export default function App() {
           loadingFileName={state.upload.state === 'loading' ? state.upload.fileName : null}
           onPrintMove={handleTransformChange}
           onDraggingChange={setDraggingIn3d}
-          onRequestUpload={requestUpload}
+          pickable={tab === 'colors'}
+          highlight={highlight}
+          onPartSelect={selectPart}
         />
+        <Toast message={toast} onDismiss={() => setToast(null)} />
       </main>
 
       <aside className="app__panel" aria-label="Personalização">
@@ -152,20 +211,27 @@ export default function App() {
           state={state}
           summary={summary}
           actions={panelActions}
-          uploaderRef={uploader}
           tab={tab}
           onTabChange={setTab}
+          selectedPart={selectedPart}
+          onSelectPart={selectPart}
           onTransformChange={handleTransformChange}
           onAreaSideChange={handleAreaSideChange}
-          onRequestUpload={requestUpload}
+          onOpenFilePicker={() => filePicker.current?.open()}
           onLayoutDraggingChange={setDraggingIn2d}
+          pristine={isPristine(state)}
+          onResetAll={resetAll}
+          exporting={exporting}
+          onExport={exportImage}
         />
       </aside>
+
+      <ImageFileInput ref={filePicker} onFile={actions.loadFile} />
 
       {dropActive && (
         <div className="drop-overlay" aria-hidden="true">
           <div className="drop-overlay__card">
-            <Icon name="image" size={32} />
+            <Icon name="image" size={28} />
             <p>Solte a imagem para aplicá-la na caneca</p>
           </div>
         </div>

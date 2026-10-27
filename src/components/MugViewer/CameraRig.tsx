@@ -61,9 +61,11 @@ function moveTo(controls: CameraControlsImpl, azimuth: number, polar: number, di
 interface CameraRigProps {
   /** Posição horizontal (cm) do centro da área de impressão, mirada pela vista "print". */
   printOffsetX: number
+  /** Chamado quando o usuário começa a girar ou aproximar a câmera. */
+  onUserControl?(): void
 }
 
-export const CameraRig = forwardRef<CameraRigHandle, CameraRigProps>(function CameraRig({ printOffsetX }, ref) {
+export const CameraRig = forwardRef<CameraRigHandle, CameraRigProps>(function CameraRig({ printOffsetX, onUserControl }, ref) {
   const controls = useRef<CameraControlsImpl>(null)
   const printAngle = printOffsetToAngle(printOffsetX)
   const camera = useThree((state) => state.camera as THREE.PerspectiveCamera)
@@ -119,6 +121,7 @@ export const CameraRig = forwardRef<CameraRigHandle, CameraRigProps>(function Ca
     <CameraControls
       ref={controls}
       makeDefault
+      onControlStart={onUserControl}
       smoothTime={0.32}
       draggingSmoothTime={0.12}
       minPolarAngle={deg(4)}

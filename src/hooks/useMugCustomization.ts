@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useReducer, useRef } from 'react'
-import { DEFAULT_MUG_COLORS, type MugColorRegion, type MugColors } from '../config/mugColors'
+import { DEFAULT_MUG_COLORS, MUG_COLOR_REGIONS, type MugColorRegion, type MugColorSettings } from '../config/mugColors'
 import { TEXTURE_MAX_SIDE } from '../config/mugSpec'
 import { parseHexColor } from '../lib/color'
 import { ImageFileError, validateImageFile, type ImageFormat } from '../lib/imageFile'
@@ -68,9 +68,12 @@ export interface CustomizationState {
   area: PrintArea
   changeKind: ChangeKind
   upload: UploadStatus
-  /** Cores da alça, da borda e do interior, independentes entre si e da estampa. */
-  colors: MugColors
+  /** Cor-base da cerâmica e cores próprias das partes, independentes da estampa e da área. */
+  colors: MugColorSettings
 }
+
+/** O que "Redefinir" restaura (e o desfazer devolve). A imagem enviada não faz parte. */
+export type CustomizationSnapshot = Pick<CustomizationState, 'transform' | 'area' | 'colors'>
 
 export interface PrintSummary {
   printedSize: Size
@@ -93,8 +96,13 @@ export type CustomizationAction =
   | { type: 'area-move'; offsetX?: number; offsetY?: number; kind: ChangeKind }
   | { type: 'area-side'; side: PrintSide }
   | { type: 'reset-area' }
-  | { type: 'color'; region: MugColorRegion; color: string }
-  | { type: 'reset-color'; region: MugColorRegion }
+  | { type: 'body-color'; color: string }
+  | { type: 'reset-body-color' }
+  | { type: 'part-color'; region: MugColorRegion; color: string }
+  | { type: 'link-part'; region: MugColorRegion }
+  | { type: 'link-all-parts' }
+  | { type: 'reset-all' }
+  | { type: 'restore'; snapshot: CustomizationSnapshot }
 
 export const initialCustomizationState: CustomizationState = {
   image: null,
@@ -102,7 +110,7 @@ export const initialCustomizationState: CustomizationState = {
   area: { ...DEFAULT_PRINT_AREA },
   changeKind: 'continuous',
   upload: { state: 'idle' },
-  colors: { ...DEFAULT_MUG_COLORS },
+  colors: DEFAULT_MUG_COLORS,
 }
 
 /** Dimensão da área ajustada por um controle: largura, altura ou escala geral (proporcional). */
@@ -130,9 +138,32 @@ function withArea(state: CustomizationState, next: PrintArea, kind: ChangeKind):
   return { ...state, area, transform, changeKind: kind }
 }
 
-function withColor(state: CustomizationState, region: MugColorRegion, color: string): CustomizationState {
-  // Só a região indicada muda; as outras cores e o restante do estado ficam como estão.
-  return state.colors[region] === color ? state : { ...state, colors: { ...state.colors, [region]: color } }
+const sameColors = (a: MugColorSettings, b: MugColorSettings) =>
+  a.body === b.body && MUG_COLOR_REGIONS.every((region) => a.overrides[region] === b.overrides[region])
+
+/** Aplica novas cores; o restante do estado (imagem, área, estampa) não é tocado. */
+function withColors(state: CustomizationState, colors: MugColorSettings): CustomizationState {
+  return sameColors(colors, state.colors) ? state : { ...state, colors }
+}
+
+/** Muda só a cor própria de uma parte (null volta a acompanhar a cor-base). */
+function withOverride(state: CustomizationState, region: MugColorRegion, color: string | null): CustomizationState {
+  return withColors(state, { ...state.colors, overrides: { ...state.colors.overrides, [region]: color } })
+}
+
+const sameTransform = (a: PrintTransform, b: PrintTransform) =>
+  a.offsetX === b.offsetX && a.offsetY === b.offsetY && a.scale === b.scale && a.rotation === b.rotation && a.fit === b.fit
+
+/** Indica se a personalização (estampa, área e cores) ainda está no padrão. */
+export const isPristine = (state: CustomizationSnapshot) =>
+  sameTransform(state.transform, DEFAULT_TRANSFORM) &&
+  sameArea(state.area, DEFAULT_PRINT_AREA) &&
+  sameColors(state.colors, DEFAULT_MUG_COLORS)
+
+/** Restaura um conjunto de ajustes, mantendo a imagem atual (e o centro dela dentro da área). */
+function withSnapshot(state: CustomizationState, snapshot: CustomizationSnapshot): CustomizationState {
+  const area = clampArea(snapshot.area)
+  return { ...state, area, transform: clampTransform(snapshot.transform, area), colors: snapshot.colors, changeKind: 'discrete' }
 }
 
 export function customizationReducer(state: CustomizationState, action: CustomizationAction): CustomizationState {
@@ -155,12 +186,26 @@ export function customizationReducer(state: CustomizationState, action: Customiz
         // Remover também cancela um envio em andamento.
         upload: state.upload.state === 'loading' ? { state: 'idle' } : state.upload,
       }
-    case 'color': {
+    case 'body-color': {
+      // As partes vinculadas acompanham a nova cor-base; as que têm cor própria a mantêm.
       const color = parseHexColor(action.color)
-      return color ? withColor(state, action.region, color) : state
+      return color ? withColors(state, { ...state.colors, body: color }) : state
     }
-    case 'reset-color':
-      return withColor(state, action.region, DEFAULT_MUG_COLORS[action.region])
+    case 'reset-body-color':
+      return withColors(state, { ...state.colors, body: DEFAULT_MUG_COLORS.body })
+    case 'part-color': {
+      const color = parseHexColor(action.color)
+      return color ? withOverride(state, action.region, color) : state
+    }
+    case 'link-part':
+      return withOverride(state, action.region, null)
+    case 'link-all-parts':
+      // "Aplicar a todas as partes": a caneca inteira volta a ter uma só cor, a cor-base.
+      return withColors(state, { ...state.colors, overrides: { ...DEFAULT_MUG_COLORS.overrides } })
+    case 'reset-all':
+      return withSnapshot(state, { transform: DEFAULT_TRANSFORM, area: DEFAULT_PRINT_AREA, colors: DEFAULT_MUG_COLORS })
+    case 'restore':
+      return withSnapshot(state, action.snapshot)
     case 'transform':
       return { ...state, transform: clampTransform({ ...state.transform, ...action.patch }, state.area), changeKind: action.kind }
     case 'reset-transform':
@@ -247,8 +292,13 @@ export function useMugCustomization() {
       placeAreaOnSide: (side: PrintSide) => dispatch({ type: 'area-side', side }),
       centerArea: () => dispatch({ type: 'area-move', offsetX: 0, offsetY: 0, kind: 'discrete' }),
       resetArea: () => dispatch({ type: 'reset-area' }),
-      setColor: (region: MugColorRegion, color: string) => dispatch({ type: 'color', region, color }),
-      resetColor: (region: MugColorRegion) => dispatch({ type: 'reset-color', region }),
+      setBodyColor: (color: string) => dispatch({ type: 'body-color', color }),
+      resetBodyColor: () => dispatch({ type: 'reset-body-color' }),
+      setPartColor: (region: MugColorRegion, color: string) => dispatch({ type: 'part-color', region, color }),
+      linkPart: (region: MugColorRegion) => dispatch({ type: 'link-part', region }),
+      linkAllParts: () => dispatch({ type: 'link-all-parts' }),
+      resetAll: () => dispatch({ type: 'reset-all' }),
+      restore: (snapshot: CustomizationSnapshot) => dispatch({ type: 'restore', snapshot }),
     }),
     [loadFile],
   )

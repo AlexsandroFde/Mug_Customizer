@@ -11,6 +11,7 @@ import {
   type AreaHandle,
   type PrintArea,
 } from '../../lib/printArea'
+import { relativeLuminance } from '../../lib/color'
 import { getImageCenter, getPrintedSize, snapValue, type Point, type PrintTransform } from '../../lib/printMapping'
 
 /** O que o arraste no editor manipula: a imagem dentro da área ou a própria área. */
@@ -21,6 +22,8 @@ interface PrintLayoutEditorProps {
   transform: PrintTransform
   area: PrintArea
   target: LayoutTarget
+  /** Cor-base da caneca, usada na parede desenrolada. */
+  wallColor: string
   onImageMove(offset: Pick<PrintTransform, 'offsetX' | 'offsetY'>, kind: ChangeKind): void
   onAreaChange(area: PrintArea, kind: ChangeKind): void
   onDraggingChange(dragging: boolean): void
@@ -81,6 +84,7 @@ export function PrintLayoutEditor({
   transform,
   area,
   target,
+  wallColor,
   onImageMove,
   onAreaChange,
   onDraggingChange,
@@ -208,6 +212,7 @@ export function PrintLayoutEditor({
 
   return (
     <div
+      data-dark-wall={relativeLuminance(wallColor) < 0.18 ? 'true' : undefined}
       className={`layout-editor layout-editor--${target}${interactive ? ' layout-editor--interactive' : ''}${dragging ? ' is-dragging' : ''}`}
     >
       <svg
@@ -243,7 +248,15 @@ export function PrintLayoutEditor({
           </clipPath>
         </defs>
 
-        <rect className="layout-editor__wall" x={-HALF_CIRCUMFERENCE} y={0} width={CIRCUMFERENCE} height={MUG.height} rx={0.3} />
+        <rect
+          className="layout-editor__wall"
+          style={{ fill: wallColor }}
+          x={-HALF_CIRCUMFERENCE}
+          y={0}
+          width={CIRCUMFERENCE}
+          height={MUG.height}
+          rx={0.3}
+        />
 
         {/* Fora da região imprimível: junto à alça (nas duas pontas), à borda e à base. */}
         <g fill={`url(#${hatch})`} clipPath={`url(#${wallClip})`}>

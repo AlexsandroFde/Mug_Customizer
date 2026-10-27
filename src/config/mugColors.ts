@@ -1,33 +1,57 @@
 /**
- * Regiões da caneca que podem receber cor própria e as cores sugeridas.
- * As cores são guardadas como hexadecimal sRGB minúsculo ("#rrggbb").
+ * Cores da caneca: uma cor-base, aplicada à cerâmica inteira, e cores próprias opcionais para a
+ * alça, a borda e o interior. As cores são guardadas como hexadecimal sRGB minúsculo ("#rrggbb").
  */
 import { GLAZE_COLOR } from './mugSpec'
 
+/** Partes que podem acompanhar a cor-base ou receber cor própria. */
 export type MugColorRegion = 'handle' | 'rim' | 'interior'
 
-export type MugColors = Record<MugColorRegion, string>
+/** Todas as partes coloríveis: o corpo (que define a cor-base) e as regiões. */
+export type MugPart = 'body' | MugColorRegion
 
-export const MUG_COLOR_REGIONS: ReadonlyArray<{
-  region: MugColorRegion
+export interface MugColorSettings {
+  /** Cor-base: corpo externo e base, e todas as partes que estiverem vinculadas a ela. */
+  body: string
+  /** Cor própria de cada parte; null significa que a parte acompanha a cor-base. */
+  overrides: Record<MugColorRegion, string | null>
+}
+
+/** Cor efetiva de cada parte, já resolvido o vínculo com a cor-base. */
+export type ResolvedMugColors = Record<MugPart, string>
+
+export const MUG_COLOR_REGIONS: readonly MugColorRegion[] = ['handle', 'rim', 'interior']
+
+/** Por padrão a caneca é toda branca, com as três partes vinculadas à cor-base. */
+export const DEFAULT_MUG_COLORS: Readonly<MugColorSettings> = {
+  body: GLAZE_COLOR,
+  overrides: { handle: null, rim: null, interior: null },
+}
+
+export const MUG_PARTS: ReadonlyArray<{
+  part: MugPart
   label: string
   /** Nome com a preposição e o artigo corretos, para frases como "cor da alça". */
   ofLabel: string
-  description: string
 }> = [
-  { region: 'handle', label: 'Alça', ofLabel: 'da alça', description: 'Toda a alça, por dentro e por fora.' },
-  { region: 'rim', label: 'Borda', ofLabel: 'da borda', description: 'O acabamento arredondado do topo, entre a parede externa e a interna.' },
-  { region: 'interior', label: 'Interior', ofLabel: 'do interior', description: 'Paredes internas e fundo. A vista Topo mostra o interior inteiro.' },
+  { part: 'body', label: 'Caneca', ofLabel: 'da caneca' },
+  { part: 'handle', label: 'Alça', ofLabel: 'da alça' },
+  { part: 'rim', label: 'Borda', ofLabel: 'da borda' },
+  { part: 'interior', label: 'Interior', ofLabel: 'do interior' },
 ]
 
-/** Todas as regiões começam com o esmalte branco original. */
-export const DEFAULT_MUG_COLORS: Readonly<MugColors> = {
-  handle: GLAZE_COLOR,
-  rim: GLAZE_COLOR,
-  interior: GLAZE_COLOR,
+export const getPartInfo = (part: MugPart) => MUG_PARTS.find((item) => item.part === part)!
+
+export function resolveMugColors(settings: MugColorSettings): ResolvedMugColors {
+  return {
+    body: settings.body,
+    handle: settings.overrides.handle ?? settings.body,
+    rim: settings.overrides.rim ?? settings.body,
+    interior: settings.overrides.interior ?? settings.body,
+  }
 }
 
-/** Cores de esmalte comuns em canecas de duas cores. */
+/** Cores de esmalte comuns em canecas. */
 export const COLOR_PALETTE: ReadonlyArray<{ name: string; hex: string }> = [
   { name: 'Branco', hex: GLAZE_COLOR },
   { name: 'Preto', hex: '#202124' },
@@ -44,3 +68,5 @@ export const COLOR_PALETTE: ReadonlyArray<{ name: string; hex: string }> = [
   { name: 'Azul-marinho', hex: '#1d2b4f' },
   { name: 'Roxo', hex: '#6d3fa0' },
 ]
+
+export const getPaletteName = (hex: string) => COLOR_PALETTE.find((swatch) => swatch.hex === hex)?.name ?? null
