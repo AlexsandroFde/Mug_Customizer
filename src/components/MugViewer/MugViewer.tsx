@@ -4,6 +4,7 @@ import { forwardRef, useCallback, useImperativeHandle, useRef, useState, type Ke
 import * as THREE from 'three'
 import type { MugColors } from '../../config/mugColors'
 import type { ChangeKind, PrintImage } from '../../hooks/useMugCustomization'
+import type { PrintArea } from '../../lib/printArea'
 import { printOffsetToAngle, type PrintTransform } from '../../lib/printMapping'
 import { ErrorBoundary } from '../ui/ErrorBoundary'
 import { CameraRig, type CameraRigHandle, type ViewPreset } from './CameraRig'
@@ -15,7 +16,7 @@ import { ViewerOverlay } from './ViewerOverlay'
 export type InteractionMode = 'orbit' | 'edit'
 
 export interface MugViewerHandle {
-  /** Gira a câmera até a estampa posicionada no deslocamento horizontal informado. */
+  /** Gira a câmera até a posição horizontal informada (cm, no referencial da região imprimível). */
   focusPrint(offsetX: number): void
   setView(view: ViewPreset): void
 }
@@ -23,11 +24,14 @@ export interface MugViewerHandle {
 interface MugViewerProps {
   image: PrintImage | null
   transform: PrintTransform
+  area: PrintArea
   colors: MugColors
   animate: boolean
   mode: InteractionMode
   onModeChange(mode: InteractionMode): void
+  /** Guias de edição (limites, área e contorno da imagem) desenhadas na caneca. */
   guidesVisible: boolean
+  onToggleGuides(): void
   loadingFileName: string | null
   onPrintMove(offset: Pick<PrintTransform, 'offsetX' | 'offsetY'>, kind: ChangeKind): void
   onDraggingChange(dragging: boolean): void
@@ -41,11 +45,13 @@ export const MugViewer = forwardRef<MugViewerHandle, MugViewerProps>(function Mu
   {
     image,
     transform,
+    area,
     colors,
     animate,
     mode,
     onModeChange,
     guidesVisible,
+    onToggleGuides,
     loadingFileName,
     onPrintMove,
     onDraggingChange,
@@ -147,13 +153,21 @@ export const MugViewer = forwardRef<MugViewerHandle, MugViewerProps>(function Mu
           }}
         >
           <StudioLighting />
-          <MugModel image={image} transform={transform} animate={animate} guidesVisible={guidesVisible} colors={colors} />
+          <MugModel
+            image={image}
+            transform={transform}
+            area={area}
+            animate={animate}
+            guidesVisible={guidesVisible}
+            colors={colors}
+          />
           <ContactShadows position={[0, 0.001, 0]} scale={26} resolution={1024} far={7} blur={2.4} opacity={0.5} color="#1f2633" frames={1} />
-          <CameraRig ref={rig} />
+          <CameraRig ref={rig} printOffsetX={area.offsetX} />
           <PrintDragController
             enabled={editing}
             container={container}
             transform={transform}
+            area={area}
             onMove={handlePrintMove}
             onDraggingChange={handleDraggingChange}
             onHoverChange={setPrintHover}
@@ -168,6 +182,8 @@ export const MugViewer = forwardRef<MugViewerHandle, MugViewerProps>(function Mu
         onView={setView}
         onResetView={() => setView(homeView)}
         onZoom={zoom}
+        guidesVisible={guidesVisible}
+        onToggleGuides={onToggleGuides}
         loadingFileName={loadingFileName}
         onRequestUpload={onRequestUpload}
         contextLost={contextLost}

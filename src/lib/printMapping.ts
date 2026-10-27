@@ -1,32 +1,26 @@
 /**
  * Matemática do posicionamento da estampa.
  *
- * A área de impressão é tratada como um retângulo "desenrolado" da parede externa:
+ * A parede externa é tratada como um plano "desenrolado":
  * - x (cm) corre ao longo da circunferência, crescendo da esquerda para a direita
- *   para quem olha a caneca de fora, com x = 0 no lado oposto à alça;
- * - y (cm) é a altura, com y = 0 no centro vertical da área imprimível.
+ *   para quem olha a caneca de fora, com x = 0 no centro da região imprimível (oposto à alça);
+ * - y (cm) é a altura, com y = 0 no centro vertical da região imprimível.
  *
+ * A imagem é posicionada em relação à área de impressão escolhida pelo usuário (printArea.ts):
+ * o encaixe usa as dimensões da área e o deslocamento é medido a partir do centro dela.
  * As mesmas fórmulas são usadas no shader da caneca, no editor 2D e no arraste em 3D,
  * o que garante que as três visualizações concordem entre si.
  */
-import {
-  MUG,
-  PRINT_CENTER_ANGLE,
-  PRINT_CENTER_Y,
-  PRINT_HEIGHT,
-  PRINT_QUALITY_DPI,
-  PRINT_WIDTH,
-  SCALE_RANGE,
-} from '../config/mugSpec'
+import { MUG, PRINT_QUALITY_DPI, PRINT_REFERENCE_DPI, PRINTABLE, SCALE_RANGE } from '../config/mugSpec'
 
-export type FitMode = 'contain' | 'cover' | 'stretch'
+export type FitMode = 'contain' | 'cover' | 'stretch' | 'original'
 export type PrintSide = 'left' | 'center' | 'right'
 export type PrintQuality = 'excellent' | 'good' | 'acceptable' | 'low'
 
 export interface PrintTransform {
-  /** Deslocamento horizontal ao longo da circunferência, em cm (positivo = para a direita). */
+  /** Deslocamento horizontal a partir do centro da área de impressão, em cm (positivo = para a direita). */
   offsetX: number
-  /** Deslocamento vertical, em cm (positivo = para cima). */
+  /** Deslocamento vertical a partir do centro da área de impressão, em cm (positivo = para cima). */
   offsetY: number
   /** Multiplicador aplicado ao tamanho de encaixe (1 = 100 %). */
   scale: number
@@ -46,6 +40,14 @@ export interface Point {
   y: number
 }
 
+/** Dimensões e posição de uma área de impressão (cm, no referencial da região imprimível). */
+export interface AreaBox {
+  width: number
+  height: number
+  offsetX: number
+  offsetY: number
+}
+
 export const DEFAULT_TRANSFORM: Readonly<PrintTransform> = {
   offsetX: 0,
   offsetY: 0,
@@ -53,8 +55,6 @@ export const DEFAULT_TRANSFORM: Readonly<PrintTransform> = {
   rotation: 0,
   fit: 'contain',
 }
-
-export const PRINT_AREA_SIZE: Readonly<Size> = { width: PRINT_WIDTH, height: PRINT_HEIGHT }
 
 const TAU = Math.PI * 2
 const CM_PER_INCH = 2.54
@@ -74,14 +74,25 @@ export function normalizeDegrees(degrees: number): number {
   return wrapped === -180 ? 180 : wrapped
 }
 
+/** Tamanho natural da imagem impressa na resolução de referência, em cm. */
+export function getOriginalPrintSize(pixels: Size): Size {
+  return { width: (pixels.width / PRINT_REFERENCE_DPI) * CM_PER_INCH, height: (pixels.height / PRINT_REFERENCE_DPI) * CM_PER_INCH }
+}
+
 /**
  * Tamanho da imagem (cm) depois do encaixe na área de impressão, antes da escala do usuário.
- * - contain: mostra a imagem inteira, mantendo as proporções;
- * - cover: cobre toda a área, mantendo as proporções (o excedente é cortado);
- * - stretch: ocupa exatamente a área, alterando as proporções.
+ * - contain (Conter): mostra a imagem inteira, mantendo as proporções;
+ * - cover (Cobrir): cobre toda a área, mantendo as proporções (o excedente é cortado);
+ * - stretch (Preencher): ocupa exatamente a área, alterando as proporções;
+ * - original (Tamanho original): tamanho natural do arquivo na resolução de referência,
+ *   independente da área (o que não couber é cortado).
+ *
+ * @param pixels dimensões da imagem original em pixels (definem a proporção e o tamanho natural)
  */
-export function getFittedSize(aspect: number, fit: FitMode, area: Size = PRINT_AREA_SIZE): Size {
+export function getFittedSize(pixels: Size, fit: FitMode, area: Size): Size {
   if (fit === 'stretch') return { width: area.width, height: area.height }
+  if (fit === 'original') return getOriginalPrintSize(pixels)
+  const aspect = pixels.width / pixels.height
   const areaAspect = area.width / area.height
   const limitedByWidth = fit === 'contain' ? aspect >= areaAspect : aspect < areaAspect
   return limitedByWidth
@@ -90,48 +101,39 @@ export function getFittedSize(aspect: number, fit: FitMode, area: Size = PRINT_A
 }
 
 /** Tamanho final impresso da estampa, em cm. */
-export function getPrintedSize(aspect: number, transform: PrintTransform): Size {
-  const fitted = getFittedSize(aspect, transform.fit)
+export function getPrintedSize(pixels: Size, transform: PrintTransform, area: Size): Size {
+  const fitted = getFittedSize(pixels, transform.fit, area)
   return { width: fitted.width * transform.scale, height: fitted.height * transform.scale }
 }
 
-/** Meia-largura e meia-altura da caixa que envolve a estampa já rotacionada. */
-export function getRotatedHalfExtents(size: Size, rotationDegrees: number): Size {
-  const angle = degToRad(rotationDegrees)
-  const cos = Math.abs(Math.cos(angle))
-  const sin = Math.abs(Math.sin(angle))
-  return {
-    width: (size.width * cos + size.height * sin) / 2,
-    height: (size.width * sin + size.height * cos) / 2,
-  }
-}
-
-/** Mantém os parâmetros dentro dos limites: o centro da estampa nunca sai da área imprimível. */
-export function clampTransform(transform: PrintTransform): PrintTransform {
+/** Mantém os parâmetros dentro dos limites: o centro da estampa nunca sai da área de impressão. */
+export function clampTransform(transform: PrintTransform, area: Size): PrintTransform {
   return {
     ...transform,
-    offsetX: clamp(transform.offsetX, -PRINT_WIDTH / 2, PRINT_WIDTH / 2),
-    offsetY: clamp(transform.offsetY, -PRINT_HEIGHT / 2, PRINT_HEIGHT / 2),
+    // Somar zero converte um eventual -0 em 0.
+    offsetX: clamp(transform.offsetX, -area.width / 2, area.width / 2) + 0,
+    offsetY: clamp(transform.offsetY, -area.height / 2, area.height / 2) + 0,
     scale: clamp(transform.scale, SCALE_RANGE.min, SCALE_RANGE.max),
     rotation: normalizeDegrees(transform.rotation),
   }
 }
 
-/** Converte um ponto da parede externa (espaço local da caneca) para coordenadas da área de impressão. */
+/** Centro da estampa no referencial da região imprimível. */
+export function getImageCenter(area: AreaBox, transform: PrintTransform): Point {
+  return { x: area.offsetX + transform.offsetX, y: area.offsetY + transform.offsetY }
+}
+
+/** Converte um ponto da parede externa (espaço local da caneca) para o referencial da região imprimível. */
 export function surfaceToPrint(x: number, y: number, z: number): Point {
   return {
-    x: wrapAngle(Math.atan2(x, z) - PRINT_CENTER_ANGLE) * MUG.outerRadius,
-    y: y - PRINT_CENTER_Y,
+    x: wrapAngle(Math.atan2(x, z) - PRINTABLE.centerAngle) * MUG.outerRadius,
+    y: y - PRINTABLE.centerY,
   }
 }
 
-/** Ângulo em torno do eixo vertical (padrão atan2(x, z)) correspondente a um deslocamento horizontal. */
+/** Ângulo em torno do eixo vertical (padrão atan2(x, z)) correspondente a uma posição horizontal. */
 export function printOffsetToAngle(offsetX: number): number {
-  return wrapAngle(PRINT_CENTER_ANGLE + offsetX / MUG.outerRadius)
-}
-
-export function isInsidePrintArea(point: Point, margin = 0): boolean {
-  return Math.abs(point.x) <= PRINT_WIDTH / 2 + margin && Math.abs(point.y) <= PRINT_HEIGHT / 2 + margin
+  return wrapAngle(PRINTABLE.centerAngle + offsetX / MUG.outerRadius)
 }
 
 /** Cosseno e seno da rotação da estampa no referencial da área (y para cima, anti-horário positivo). */
@@ -140,19 +142,19 @@ export function getRotationVector(rotationDegrees: number): Point {
   return { x: Math.cos(angle), y: Math.sin(angle) }
 }
 
-/** Coordenadas UV da imagem (de 0 a 1, v para cima) em um ponto da área de impressão. Espelha o shader. */
-export function printToImageUv(point: Point, transform: PrintTransform, size: Size): Point {
-  const rotation = getRotationVector(transform.rotation)
-  const dx = point.x - transform.offsetX
-  const dy = point.y - transform.offsetY
+/** Coordenadas UV da imagem (de 0 a 1, v para cima) em um ponto da parede. Espelha o shader. */
+export function printToImageUv(point: Point, center: Point, rotationDegrees: number, size: Size): Point {
+  const rotation = getRotationVector(rotationDegrees)
+  const dx = point.x - center.x
+  const dy = point.y - center.y
   const localX = dx * rotation.x + dy * rotation.y
   const localY = -dx * rotation.y + dy * rotation.x
   return { x: localX / size.width + 0.5, y: localY / size.height + 0.5 }
 }
 
 /** Cantos da estampa posicionada (inferior esquerdo, inferior direito, superior direito, superior esquerdo). */
-export function getImageCorners(transform: PrintTransform, size: Size): Point[] {
-  const rotation = getRotationVector(transform.rotation)
+export function getImageCorners(center: Point, rotationDegrees: number, size: Size): Point[] {
+  const rotation = getRotationVector(rotationDegrees)
   const halfW = size.width / 2
   const halfH = size.height / 2
   const local: Point[] = [
@@ -162,30 +164,18 @@ export function getImageCorners(transform: PrintTransform, size: Size): Point[] 
     { x: -halfW, y: halfH },
   ]
   return local.map(({ x, y }) => ({
-    x: transform.offsetX + x * rotation.x - y * rotation.y,
-    y: transform.offsetY + x * rotation.y + y * rotation.x,
+    x: center.x + x * rotation.x - y * rotation.y,
+    y: center.y + x * rotation.y + y * rotation.x,
   }))
 }
 
-/** Indica se alguma parte da estampa ultrapassa a área imprimível (e será cortada). */
-export function isImageCropped(transform: PrintTransform, size: Size, tolerance = 0.02): boolean {
-  return getImageCorners(transform, size).some(
-    (corner) => Math.abs(corner.x) > PRINT_WIDTH / 2 + tolerance || Math.abs(corner.y) > PRINT_HEIGHT / 2 + tolerance,
+/** Indica se alguma parte da estampa ultrapassa a área de impressão (e será cortada). */
+export function isImageCropped(area: AreaBox, transform: PrintTransform, size: Size, tolerance = 0.02): boolean {
+  return getImageCorners(getImageCenter(area, transform), transform.rotation, size).some(
+    (corner) =>
+      Math.abs(corner.x - area.offsetX) > area.width / 2 + tolerance ||
+      Math.abs(corner.y - area.offsetY) > area.height / 2 + tolerance,
   )
-}
-
-/**
- * Deslocamento horizontal que centraliza a estampa em um dos lados visíveis da caneca.
- * O lado esquerdo é o que aparece quando a alça fica à esquerda de quem olha (e vice-versa).
- * Se a estampa não couber inteira naquele lado, ela é aproximada do centro o necessário.
- */
-export function getSideOffset(side: PrintSide, rotation: number, size: Size): number {
-  if (side === 'center') return 0
-  const halfWidth = getRotatedHalfExtents(size, rotation).width
-  const limit = Math.max(0, PRINT_WIDTH / 2 - halfWidth)
-  const target = side === 'left' ? -PRINT_WIDTH / 4 : PRINT_WIDTH / 4
-  // Somar zero converte um eventual -0 em 0.
-  return clamp(target, -limit, limit) + 0
 }
 
 /** Atrai o valor para o alvo mais próximo quando a distância for menor que o limite. */

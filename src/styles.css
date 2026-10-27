@@ -21,6 +21,11 @@
   --shadow: 0 6px 20px rgba(16, 24, 40, 0.1), 0 1px 3px rgba(16, 24, 40, 0.08);
   --glass: rgba(255, 255, 255, 0.82);
   --panel-width: 400px;
+  --panel-pad: 28px;
+  /* Guias de edição: as mesmas cores do shader (GUIDE_COLORS, em MugTexture.ts). */
+  --guide-area: #3f51d8;
+  --guide-limit: #d97706;
+  --guide-image: #c2255c;
 
   color-scheme: light;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
@@ -217,6 +222,31 @@ button {
 .chip:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
+}
+
+.viewer-views__group {
+  display: flex;
+  gap: 2px;
+}
+
+.viewer-views__divider {
+  align-self: center;
+  width: 1px;
+  height: 20px;
+  margin: 0 3px;
+  background: var(--border-strong);
+}
+
+.viewer-guides {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding-inline: 11px;
+}
+
+.viewer-guides[aria-pressed='true'] {
+  background: var(--accent-soft);
+  color: var(--accent);
 }
 
 .viewer-bottom {
@@ -450,6 +480,51 @@ button {
   outline-offset: 1px;
 }
 
+.segmented--compact .segmented__option {
+  padding: 6px 4px;
+  font-size: 13px;
+}
+
+/* ------------------------------------------------------------------ Tabs */
+
+.tabs {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 11px;
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+
+.tabs__tab {
+  flex: 1 1 0;
+  min-height: 38px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 14px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s, box-shadow 0.15s;
+}
+
+.tabs__tab:hover {
+  color: var(--text);
+}
+
+.tabs__tab[aria-selected='true'] {
+  background: var(--surface);
+  color: var(--accent);
+  box-shadow: var(--shadow-sm), 0 0 0 1px var(--border);
+}
+
+.tabs__tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 .spinner {
   display: inline-block;
   flex: none;
@@ -478,7 +553,47 @@ button {
 .panel {
   display: flex;
   flex-direction: column;
-  padding: 28px 28px 32px;
+  padding: var(--panel-pad) var(--panel-pad) 32px;
+}
+
+/* As abas ficam presas ao topo do painel enquanto o conteúdo rola. */
+.panel__tabs {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  margin: 0 calc(-1 * var(--panel-pad));
+  padding: 12px var(--panel-pad);
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.panel__section--tab {
+  border-top: 0;
+  padding-top: 8px;
+  outline: none;
+}
+
+/* Colunas minmax(0, 1fr): textos auxiliares sem quebra não podem alargar o painel. */
+.control-stack {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+}
+
+.empty-state {
+  display: grid;
+  justify-items: start;
+  gap: 12px;
+  padding: 16px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+
+.empty-state p {
+  margin: 0;
 }
 
 .panel__header {
@@ -561,8 +676,15 @@ button {
 
 .panel__actions {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
+}
+
+.panel__actions .button {
+  padding-inline: 10px;
+  white-space: normal;
+  text-align: center;
+  line-height: 1.25;
 }
 
 /* ------------------------------------------------------------------ Uploader */
@@ -770,16 +892,100 @@ button {
 
 .layout-editor__bounds {
   fill: none;
-  stroke: var(--accent);
+  stroke: var(--guide-image);
   stroke-width: 1;
-  opacity: 0.55;
+  opacity: 0.7;
 }
 
-.layout-editor__area {
-  fill: none;
-  stroke: var(--accent);
-  stroke-width: 1.25;
+.layout-editor__outside-area {
+  fill: rgba(23, 26, 33, 0.045);
+  pointer-events: none;
+}
+
+.layout-editor__area-edge {
+  stroke: var(--guide-area);
+  stroke-width: 1.5;
   stroke-dasharray: 5 4;
+  stroke-linecap: round;
+  pointer-events: none;
+}
+
+.layout-editor__area-edge.is-limit {
+  stroke: var(--guide-limit);
+  stroke-width: 2;
+  stroke-dasharray: none;
+}
+
+.layout-editor--area .layout-editor__svg {
+  cursor: default;
+}
+
+.layout-editor__area-body {
+  fill: transparent;
+  cursor: move;
+}
+
+.layout-editor.is-dragging .layout-editor__area-body {
+  cursor: grabbing;
+}
+
+.layout-editor__handle-hit {
+  fill: transparent;
+}
+
+.layout-editor__handle-knob {
+  fill: #fff;
+  stroke: var(--guide-area);
+  stroke-width: 1.5;
+  pointer-events: none;
+}
+
+.layout-editor__handle:hover .layout-editor__handle-knob {
+  fill: var(--guide-area);
+}
+
+.layout-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: -4px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.layout-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend-swatch {
+  flex: none;
+  width: 16px;
+  height: 0;
+  border-top: 2px solid;
+}
+
+.legend-swatch--area {
+  border-top: 2px dashed var(--guide-area);
+}
+
+.legend-swatch--image {
+  border-color: var(--guide-image);
+}
+
+.legend-swatch--limit,
+.limit-swatch {
+  border-color: var(--guide-limit);
+}
+
+.legend-swatch--blocked {
+  height: 10px;
+  border: 1px solid #d9d5cd;
+  border-radius: 2px;
+  background: repeating-linear-gradient(45deg, #f0eee9 0 2px, #d9d5cd 2px 3px);
 }
 
 .layout-editor__guide {
@@ -809,6 +1015,7 @@ button {
 
 .slider-field {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 6px;
 }
 
@@ -816,7 +1023,13 @@ button {
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 28px;
+  min-height: 32px;
+}
+
+.slider-field__heading {
+  display: grid;
+  min-width: 0;
+  margin-right: auto;
 }
 
 .slider-field__label {
@@ -824,11 +1037,60 @@ button {
   font-weight: 600;
 }
 
-.slider-field__value {
-  margin-left: auto;
+.slider-field__detail {
+  overflow: hidden;
+  font-size: 12px;
+  color: var(--text-3);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+
+.slider-field--disabled .slider {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.number-field {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  height: 30px;
+  padding: 0 8px 0 4px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--surface);
   font-size: 13px;
   color: var(--text-2);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.number-field:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-ring);
+}
+
+.number-field--disabled {
+  opacity: 0.55;
+}
+
+.number-field__input {
+  width: 46px;
+  padding: 0 2px;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  text-align: right;
   font-variant-numeric: tabular-nums;
+}
+
+.number-field__unit {
+  min-width: 1ch;
+  margin-left: 2px;
+  color: var(--text-3);
 }
 
 .slider {
@@ -1164,6 +1426,25 @@ button {
   color: var(--warning);
 }
 
+.note--muted {
+  font-size: 12.5px;
+  color: var(--text-3);
+}
+
+.note--limit {
+  align-items: baseline;
+  color: #8a4b00;
+}
+
+.limit-swatch {
+  flex: none;
+  width: 14px;
+  height: 0;
+  border-top: 3px solid var(--guide-limit);
+  border-radius: 2px;
+  transform: translateY(-3px);
+}
+
 /* ------------------------------------------------------------------ Drop overlay */
 
 .drop-overlay {
@@ -1224,8 +1505,12 @@ button {
     box-shadow: 0 -8px 24px rgba(16, 24, 40, 0.07);
   }
 
+  :root {
+    --panel-pad: 18px;
+  }
+
   .panel {
-    padding: 20px 18px 28px;
+    padding: 20px var(--panel-pad) 28px;
   }
 
   .panel__header {
@@ -1272,9 +1557,28 @@ button {
     padding: 6px 10px;
   }
 
+  .chip {
+    padding-inline: 10px;
+  }
+
+  .viewer-guides__label {
+    display: none;
+  }
+
   .viewer-zoom .icon-button {
     width: 36px;
     height: 36px;
+  }
+}
+
+/* Telas muito estreitas: o seletor de modo fica só com ícones (os nomes seguem acessíveis). */
+@media (max-width: 359px) {
+  .viewer-bottom .segmented__option span {
+    display: none;
+  }
+
+  .viewer-bottom .segmented__option {
+    padding: 6px 12px;
   }
 }
 

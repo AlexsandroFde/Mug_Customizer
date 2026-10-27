@@ -2,8 +2,8 @@ import { CameraControls, CameraControlsImpl } from '@react-three/drei'
 import { useThree } from '@react-three/fiber'
 import { forwardRef, useImperativeHandle, useLayoutEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
-import { HANDLE, MUG, PRINT_CENTER_ANGLE } from '../../config/mugSpec'
-import { wrapAngle } from '../../lib/printMapping'
+import { HANDLE, MUG, PRINTABLE } from '../../config/mugSpec'
+import { printOffsetToAngle, wrapAngle } from '../../lib/printMapping'
 
 export type ViewPreset = 'initial' | 'print' | 'front' | 'handle' | 'back' | 'top'
 
@@ -22,16 +22,17 @@ const deg = THREE.MathUtils.degToRad
 const TARGET_Y = MUG.height * 0.47
 
 /** Azimute 0 = câmera em +Z; o azimute de uma vista é o ângulo da parede que fica de frente para ela. */
-const VIEWS: Record<Exclude<ViewPreset, 'top'>, { azimuth: number; polar: number }> = {
+const VIEWS: Record<Exclude<ViewPreset, 'top' | 'print'>, { azimuth: number; polar: number }> = {
   // Três quartos com a alça visível à direita: apresenta o produto enquanto não há estampa.
-  initial: { azimuth: PRINT_CENTER_ANGLE + deg(50), polar: deg(70) },
-  // Com estampa, a vista inicial fica quase de frente para ela, levemente girada para dar volume.
-  print: { azimuth: PRINT_CENTER_ANGLE + deg(20), polar: deg(73) },
-  front: { azimuth: PRINT_CENTER_ANGLE, polar: deg(78) },
+  initial: { azimuth: PRINTABLE.centerAngle + deg(50), polar: deg(70) },
+  // Frente do produto: o lado oposto à alça.
+  front: { azimuth: PRINTABLE.centerAngle, polar: deg(78) },
   // Alça de perfil, apontando para a direita.
   handle: { azimuth: HANDLE.angle - Math.PI / 2, polar: deg(80) },
   back: { azimuth: HANDLE.angle, polar: deg(72) },
 }
+/** Com estampa, a vista inicial fica quase de frente para a área de impressão, levemente girada para dar volume. */
+const PRINT_VIEW = { azimuthOffset: deg(20), polar: deg(73) }
 const TOP_POLAR = deg(8)
 /** De cima, a alça se estende para um dos lados: a vista precisa de um pouco mais de distância. */
 const TOP_DISTANCE_FACTOR = 1.12
@@ -57,8 +58,14 @@ function moveTo(controls: CameraControlsImpl, azimuth: number, polar: number, di
   void controls.dollyTo(distance, animate)
 }
 
-export const CameraRig = forwardRef<CameraRigHandle>(function CameraRig(_, ref) {
+interface CameraRigProps {
+  /** Posição horizontal (cm) do centro da área de impressão, mirada pela vista "print". */
+  printOffsetX: number
+}
+
+export const CameraRig = forwardRef<CameraRigHandle, CameraRigProps>(function CameraRig({ printOffsetX }, ref) {
   const controls = useRef<CameraControlsImpl>(null)
+  const printAngle = printOffsetToAngle(printOffsetX)
   const camera = useThree((state) => state.camera as THREE.PerspectiveCamera)
   const aspect = useThree((state) => state.size.width / Math.max(1, state.size.height))
   const fitDistance = useMemo(() => getFitDistance(camera.fov, aspect), [camera.fov, aspect])
@@ -85,6 +92,10 @@ export const CameraRig = forwardRef<CameraRigHandle>(function CameraRig(_, ref) 
           moveTo(instance, instance.azimuthAngle, TOP_POLAR, fitDistance * TOP_DISTANCE_FACTOR, true)
           return
         }
+        if (view === 'print') {
+          moveTo(instance, printAngle + PRINT_VIEW.azimuthOffset, PRINT_VIEW.polar, fitDistance, true)
+          return
+        }
         moveTo(instance, VIEWS[view].azimuth, VIEWS[view].polar, fitDistance, true)
       },
       faceAngle(angle) {
@@ -101,7 +112,7 @@ export const CameraRig = forwardRef<CameraRigHandle>(function CameraRig(_, ref) 
         if (instance) void instance.dolly(direction * instance.distance * 0.22, true)
       },
     }),
-    [fitDistance],
+    [fitDistance, printAngle],
   )
 
   return (

@@ -11,6 +11,8 @@ interface ViewerOverlayProps {
   onView(view: ViewPreset): void
   onResetView(): void
   onZoom(direction: 1 | -1): void
+  guidesVisible: boolean
+  onToggleGuides(): void
   loadingFileName: string | null
   onRequestUpload(): void
   contextLost: boolean
@@ -18,7 +20,7 @@ interface ViewerOverlayProps {
 }
 
 const VIEWS: ReadonlyArray<{ view: ViewPreset; label: string; description: string }> = [
-  { view: 'front', label: 'Frente', description: 'Vista de frente para o centro da área de impressão' },
+  { view: 'front', label: 'Frente', description: 'Lado oposto à alça' },
   { view: 'handle', label: 'Alça', description: 'Alça de perfil' },
   { view: 'back', label: 'Verso', description: 'Lado da alça' },
   { view: 'top', label: 'Topo', description: 'Abertura e interior vistos de cima' },
@@ -54,6 +56,8 @@ export function ViewerOverlay({
   onView,
   onResetView,
   onZoom,
+  guidesVisible,
+  onToggleGuides,
   loadingFileName,
   onRequestUpload,
   contextLost,
@@ -76,13 +80,27 @@ export function ViewerOverlay({
         {hint}
       </p>
 
-      <nav className="viewer-views" aria-label="Vistas da caneca">
-        {VIEWS.map(({ view, label, description }) => (
-          <button key={view} type="button" className="chip" title={description} onClick={() => onView(view)}>
-            {label}
-          </button>
-        ))}
-      </nav>
+      <div className="viewer-views">
+        <nav className="viewer-views__group" aria-label="Vistas da caneca">
+          {VIEWS.map(({ view, label, description }) => (
+            <button key={view} type="button" className="chip" title={description} onClick={() => onView(view)}>
+              {label}
+            </button>
+          ))}
+        </nav>
+        <span className="viewer-views__divider" aria-hidden="true" />
+        <button
+          type="button"
+          className="chip viewer-guides"
+          onClick={onToggleGuides}
+          aria-pressed={guidesVisible}
+          aria-label="Guias de edição"
+          title={guidesVisible ? 'Ocultar as guias e ver o resultado final' : 'Mostrar a área de impressão na caneca'}
+        >
+          <Icon name={guidesVisible ? 'eye' : 'eyeOff'} size={17} />
+          <span className="viewer-guides__label">Guias</span>
+        </button>
+      </div>
 
       <div className="viewer-bottom">
         {hasImage ? (

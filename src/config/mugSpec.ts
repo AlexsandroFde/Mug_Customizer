@@ -62,25 +62,49 @@ export const HANDLE = {
   ] as ReadonlyArray<readonly [number, number]>,
 } as const
 
-export const PRINT_AREA = {
-  /** Abertura angular imprimível; o restante da volta fica reservado à região da alça. */
-  arcDegrees: 290,
-  /** Limite inferior da impressão, medido a partir da mesa. */
-  bottom: 0.9,
-  /** Limite superior da impressão (0,7 cm abaixo do topo da borda). */
-  top: 8.9,
+/**
+ * Limites físicos de impressão.
+ *
+ * São valores de referência para esta caneca de 325 ml em sublimação, coerentes com o modelo 3D;
+ * ajuste-os conforme o fornecedor, o tamanho da caneca e o método de fabricação. Toda a interface,
+ * o shader e as validações derivam deles.
+ */
+export const PRINT_LIMITS = {
+  /** Margem de segurança abaixo do topo da borda. */
+  marginTop: 0.7,
+  /** Margem de segurança acima da mesa (cobre o arredondamento da base). */
+  marginBottom: 0.9,
+  /** Faixa livre de cada lado do centro da alça, medida ao longo da circunferência. */
+  handleClearance: 2.5,
+  /** Menor largura e menor altura aceitas para a área de impressão. */
+  minAreaSize: 2,
 } as const
 
-/** Largura da área imprimível ao longo da circunferência (≈ 20,8 cm). */
-export const PRINT_WIDTH = (MUG.outerRadius * PRINT_AREA.arcDegrees * Math.PI) / 180
-/** Altura da área imprimível. */
-export const PRINT_HEIGHT = PRINT_AREA.top - PRINT_AREA.bottom
-/** Altura do centro da área imprimível. */
-export const PRINT_CENTER_Y = (PRINT_AREA.top + PRINT_AREA.bottom) / 2
-/** O centro da área imprimível fica no lado oposto à alça. */
-export const PRINT_CENTER_ANGLE = HANDLE.angle + Math.PI
 /** Circunferência externa do corpo. */
 export const CIRCUMFERENCE = 2 * Math.PI * MUG.outerRadius
+
+/**
+ * Região imprimível: o maior retângulo, na parede externa "desenrolada", que respeita os limites
+ * físicos. A área de impressão escolhida pelo usuário sempre fica dentro dela.
+ */
+export const PRINTABLE = (() => {
+  const top = MUG.height - PRINT_LIMITS.marginTop
+  const bottom = PRINT_LIMITS.marginBottom
+  return {
+    /** Largura ao longo da circunferência (≈ 20,8 cm). */
+    width: CIRCUMFERENCE - 2 * PRINT_LIMITS.handleClearance,
+    height: top - bottom,
+    /** Alturas, medidas a partir da mesa. */
+    top,
+    bottom,
+    centerY: (top + bottom) / 2,
+    /** O centro fica no lado oposto à alça (ângulo no padrão atan2(x, z)). */
+    centerAngle: HANDLE.angle + Math.PI,
+  }
+})()
+
+/** Resolução de referência do modo "Tamanho original": 1 pixel da imagem = 1/300 de polegada. */
+export const PRINT_REFERENCE_DPI = 300
 
 /** Limites aplicados aos arquivos enviados pelo usuário. */
 export const IMAGE_LIMITS = {

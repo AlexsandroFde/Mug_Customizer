@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import { describe, expect, it } from 'vitest'
-import { HANDLE, MUG, PRINT_AREA, PRINT_HEIGHT, PRINT_WIDTH } from '../../config/mugSpec'
+import { HANDLE, MUG, PRINTABLE } from '../../config/mugSpec'
 import {
   cavityVisibility,
   createHandleCurve,
@@ -57,10 +57,10 @@ describe('perfil da caneca', () => {
     expect(Math.min(...points.map((point) => point.y))).toBeCloseTo(0, 6)
   })
 
-  it('a área de impressão fica inteira na parede externa reta', () => {
+  it('a região imprimível configurada fica inteira na parede externa reta', () => {
     const wall = profile.outerWall
-    expect(wall[0].y).toBeLessThanOrEqual(PRINT_AREA.bottom)
-    expect(wall.at(-1)!.y).toBeGreaterThanOrEqual(PRINT_AREA.top)
+    expect(wall[0].y).toBeLessThanOrEqual(PRINTABLE.bottom)
+    expect(wall.at(-1)!.y).toBeGreaterThanOrEqual(PRINTABLE.top)
     for (const point of wall) expect(point.r).toBeCloseTo(MUG.outerRadius, 6)
   })
 
@@ -123,8 +123,8 @@ describe('alça', () => {
     }
   })
 
-  it('não invade a área de impressão', () => {
-    const halfGap = Math.PI - PRINT_WIDTH / 2 / MUG.outerRadius
+  it('não invade a região imprimível', () => {
+    const halfGap = Math.PI - PRINTABLE.width / 2 / MUG.outerRadius
     for (let i = 0; i < position.count; i++) {
       const x = position.getX(i)
       const z = position.getZ(i)
@@ -166,7 +166,4 @@ describe('oclusão ambiente do interior', () => {
     expect(cavityVisibility(profile.rim.at(-1)!)).toBe(cavityVisibility(profile.interior[0]))
   })
 
-  it('a área imprimível tem a altura especificada', () => {
-    expect(PRINT_HEIGHT).toBeCloseTo(PRINT_AREA.top - PRINT_AREA.bottom)
-  })
 })

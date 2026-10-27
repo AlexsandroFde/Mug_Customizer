@@ -2,8 +2,16 @@ import { useFrame, useThree } from '@react-three/fiber'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import type { MugColors } from '../../config/mugColors'
-import type { PrintImage } from '../../hooks/useMugCustomization'
-import { getPrintedSize, getRotationVector, normalizeDegrees, type PrintTransform } from '../../lib/printMapping'
+import { getImagePixels, type PrintImage } from '../../hooks/useMugCustomization'
+import { getAreaLimits, type PrintArea } from '../../lib/printArea'
+import {
+  getImageCenter,
+  getPrintedSize,
+  getRotationVector,
+  normalizeDegrees,
+  type AreaBox,
+  type PrintTransform,
+} from '../../lib/printMapping'
 import { createMugGeometry } from './mugGeometry'
 import { createMugMaterials, GLAZE } from './mugMaterials'
 import { createPrintMaterial, usePrintTexture } from './MugTexture'
@@ -12,7 +20,10 @@ import { createPrintMaterial, usePrintTexture } from './MugTexture'
 const TRANSITION_LAMBDA = 12
 const GUIDES_LAMBDA = 10
 
+/** Valores exibidos na parede (em cm, no referencial da região imprimível), animáveis. */
 interface DisplayedPrint {
+  area: AreaBox
+  /** Centro da imagem. */
   x: number
   y: number
   width: number
@@ -23,20 +34,30 @@ interface DisplayedPrint {
 interface MugModelProps {
   image: PrintImage | null
   transform: PrintTransform
+  area: PrintArea
   /** Anima a mudança mais recente em vez de aplicá-la na hora. */
   animate: boolean
   guidesVisible: boolean
   colors: MugColors
 }
 
-const isClose = (a: DisplayedPrint, b: DisplayedPrint) =>
-  Math.abs(a.x - b.x) < 1e-3 &&
-  Math.abs(a.y - b.y) < 1e-3 &&
-  Math.abs(a.width - b.width) < 1e-3 &&
-  Math.abs(a.height - b.height) < 1e-3 &&
-  Math.abs(normalizeDegrees(a.rotation - b.rotation)) < 0.05
+const TOLERANCE = 1e-3
+const near = (a: number, b: number) => Math.abs(a - b) < TOLERANCE
 
-export function MugModel({ image, transform, animate, guidesVisible, colors }: MugModelProps) {
+const isClose = (a: DisplayedPrint, b: DisplayedPrint) =>
+  near(a.x, b.x) &&
+  near(a.y, b.y) &&
+  near(a.width, b.width) &&
+  near(a.height, b.height) &&
+  Math.abs(normalizeDegrees(a.rotation - b.rotation)) < 0.05 &&
+  near(a.area.width, b.area.width) &&
+  near(a.area.height, b.area.height) &&
+  near(a.area.offsetX, b.area.offsetX) &&
+  near(a.area.offsetY, b.area.offsetY)
+
+const copyDisplayed = (value: DisplayedPrint): DisplayedPrint => ({ ...value, area: { ...value.area } })
+
+export function MugModel({ image, transform, area, animate, guidesVisible, colors }: MugModelProps) {
   const invalidate = useThree((state) => state.invalidate)
   const anisotropy = useThree((state) => state.gl.capabilities.getMaxAnisotropy())
 
@@ -66,17 +87,29 @@ export function MugModel({ image, transform, animate, guidesVisible, colors }: M
   }, [materials, colors, invalidate])
 
   const target = useMemo<DisplayedPrint>(() => {
-    const size = getPrintedSize(image?.aspect ?? 1, transform)
-    return { x: transform.offsetX, y: transform.offsetY, width: size.width, height: size.height, rotation: transform.rotation }
-  }, [image?.aspect, transform])
+    const size = image ? getPrintedSize(getImagePixels(image), transform, area) : { width: 1, height: 1 }
+    const center = getImageCenter(area, transform)
+    return {
+      area: { width: area.width, height: area.height, offsetX: area.offsetX, offsetY: area.offsetY },
+      x: center.x,
+      y: center.y,
+      width: size.width,
+      height: size.height,
+      rotation: transform.rotation,
+    }
+  }, [image, transform, area])
 
-  const displayed = useRef<DisplayedPrint>({ ...target })
+  const displayed = useRef<DisplayedPrint>(copyDisplayed(target))
   const transitioning = useRef(false)
   const lastImageId = useRef(image?.id)
 
   const applyUniforms = useCallback(
     (value: DisplayedPrint) => {
       const { uniforms } = print
+      uniforms.uAreaCenter.value.set(value.area.offsetX, value.area.offsetY)
+      uniforms.uAreaHalf.value.set(value.area.width / 2, value.area.height / 2)
+      const limits = getAreaLimits(value.area)
+      uniforms.uAreaLimits.value.set(+limits.left, +limits.right, +limits.bottom, +limits.top)
       uniforms.uImageCenter.value.set(value.x, value.y)
       uniforms.uImageHalfSize.value.set(value.width / 2, value.height / 2)
       const rotation = getRotationVector(value.rotation)
@@ -92,7 +125,7 @@ export function MugModel({ image, transform, animate, guidesVisible, colors }: M
       transitioning.current = true
     } else {
       transitioning.current = false
-      displayed.current = { ...target }
+      displayed.current = copyDisplayed(target)
       applyUniforms(target)
     }
     invalidate()
@@ -117,13 +150,18 @@ export function MugModel({ image, transform, animate, guidesVisible, colors }: M
     if (transitioning.current) {
       const current = displayed.current
       const step = 1 - Math.exp(-TRANSITION_LAMBDA * delta)
-      current.x += (target.x - current.x) * step
-      current.y += (target.y - current.y) * step
-      current.width += (target.width - current.width) * step
-      current.height += (target.height - current.height) * step
+      const approach = (from: number, to: number) => from + (to - from) * step
+      current.x = approach(current.x, target.x)
+      current.y = approach(current.y, target.y)
+      current.width = approach(current.width, target.width)
+      current.height = approach(current.height, target.height)
       current.rotation += normalizeDegrees(target.rotation - current.rotation) * step
+      current.area.width = approach(current.area.width, target.area.width)
+      current.area.height = approach(current.area.height, target.area.height)
+      current.area.offsetX = approach(current.area.offsetX, target.area.offsetX)
+      current.area.offsetY = approach(current.area.offsetY, target.area.offsetY)
       if (isClose(current, target)) {
-        displayed.current = { ...target }
+        displayed.current = copyDisplayed(target)
         transitioning.current = false
       }
       applyUniforms(displayed.current)

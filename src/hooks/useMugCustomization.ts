@@ -5,12 +5,23 @@ import { parseHexColor } from '../lib/color'
 import { ImageFileError, validateImageFile, type ImageFormat } from '../lib/imageFile'
 import { processImageFile, releaseCanvas } from '../lib/imageProcessing'
 import {
+  clampArea,
+  DEFAULT_PRINT_AREA,
+  getAreaSideOffset,
+  moveArea,
+  setAreaHeight,
+  setAreaScale,
+  setAreaShape,
+  setAreaWidth,
+  type AreaShape,
+  type PrintArea,
+} from '../lib/printArea'
+import {
   clampTransform,
   DEFAULT_TRANSFORM,
   getEffectiveDpi,
   getPrintedSize,
   getPrintQuality,
-  getSideOffset,
   isImageCropped,
   type FitMode,
   type PrintQuality,
@@ -35,6 +46,12 @@ export interface PrintImage {
   hasTransparency: boolean
 }
 
+/** Dimensões em pixels do arquivo original (definem a proporção e o tamanho natural de impressão). */
+export const getImagePixels = (image: Pick<PrintImage, 'originalWidth' | 'originalHeight'>): Size => ({
+  width: image.originalWidth,
+  height: image.originalHeight,
+})
+
 /** Mudanças contínuas (arraste, sliders) aparecem na hora; as discretas (botões) são animadas na cena 3D. */
 export type ChangeKind = 'continuous' | 'discrete'
 
@@ -45,7 +62,10 @@ export type UploadStatus =
 
 export interface CustomizationState {
   image: PrintImage | null
+  /** Posição, escala, rotação e encaixe da imagem, relativos à área de impressão. */
   transform: PrintTransform
+  /** Região da caneca que recebe a imagem; independe da imagem e existe mesmo sem ela. */
+  area: PrintArea
   changeKind: ChangeKind
   upload: UploadStatus
   /** Cores da alça, da borda e do interior, independentes entre si e da estampa. */
@@ -66,17 +86,48 @@ export type CustomizationAction =
   | { type: 'dismiss-error' }
   | { type: 'remove-image' }
   | { type: 'transform'; patch: Partial<PrintTransform>; kind: ChangeKind }
-  | { type: 'place-side'; side: PrintSide }
   | { type: 'reset-transform' }
+  | { type: 'area'; area: PrintArea; kind: ChangeKind }
+  | { type: 'area-shape'; shape: AreaShape }
+  | { type: 'area-size'; dimension: AreaDimension; value: number }
+  | { type: 'area-move'; offsetX?: number; offsetY?: number; kind: ChangeKind }
+  | { type: 'area-side'; side: PrintSide }
+  | { type: 'reset-area' }
   | { type: 'color'; region: MugColorRegion; color: string }
   | { type: 'reset-color'; region: MugColorRegion }
 
 export const initialCustomizationState: CustomizationState = {
   image: null,
   transform: { ...DEFAULT_TRANSFORM },
+  area: { ...DEFAULT_PRINT_AREA },
   changeKind: 'continuous',
   upload: { state: 'idle' },
   colors: { ...DEFAULT_MUG_COLORS },
+}
+
+/** Dimensão da área ajustada por um controle: largura, altura ou escala geral (proporcional). */
+export type AreaDimension = 'width' | 'height' | 'scale'
+
+const AREA_RESIZERS: Record<AreaDimension, (area: PrintArea, value: number) => PrintArea> = {
+  width: setAreaWidth,
+  height: setAreaHeight,
+  scale: setAreaScale,
+}
+
+const sameArea = (a: PrintArea, b: PrintArea) =>
+  a.shape === b.shape && a.width === b.width && a.height === b.height && a.offsetX === b.offsetX && a.offsetY === b.offsetY
+
+/**
+ * Aplica uma área nova. A imagem mantém escala, rotação, encaixe e deslocamento em relação ao
+ * centro da área; só é reposicionada se o centro dela ficar fora da área nova.
+ */
+function withArea(state: CustomizationState, next: PrintArea, kind: ChangeKind): CustomizationState {
+  const area = clampArea(next)
+  if (sameArea(area, state.area)) return state
+  const clamped = clampTransform(state.transform, area)
+  const transform =
+    clamped.offsetX === state.transform.offsetX && clamped.offsetY === state.transform.offsetY ? state.transform : clamped
+  return { ...state, area, transform, changeKind: kind }
 }
 
 function withColor(state: CustomizationState, region: MugColorRegion, color: string): CustomizationState {
@@ -111,15 +162,25 @@ export function customizationReducer(state: CustomizationState, action: Customiz
     case 'reset-color':
       return withColor(state, action.region, DEFAULT_MUG_COLORS[action.region])
     case 'transform':
-      return { ...state, transform: clampTransform({ ...state.transform, ...action.patch }), changeKind: action.kind }
-    case 'place-side': {
-      if (!state.image) return state
-      const size = getPrintedSize(state.image.aspect, state.transform)
-      const offsetX = getSideOffset(action.side, state.transform.rotation, size)
-      return { ...state, transform: clampTransform({ ...state.transform, offsetX }), changeKind: 'discrete' }
-    }
+      return { ...state, transform: clampTransform({ ...state.transform, ...action.patch }, state.area), changeKind: action.kind }
     case 'reset-transform':
       return { ...state, transform: { ...DEFAULT_TRANSFORM }, changeKind: 'discrete' }
+    case 'area':
+      return withArea(state, action.area, action.kind)
+    case 'area-shape':
+      return withArea(state, setAreaShape(state.area, action.shape), 'discrete')
+    case 'area-size':
+      return withArea(state, AREA_RESIZERS[action.dimension](state.area, action.value), 'continuous')
+    case 'area-move':
+      return withArea(
+        state,
+        moveArea(state.area, action.offsetX ?? state.area.offsetX, action.offsetY ?? state.area.offsetY),
+        action.kind,
+      )
+    case 'area-side':
+      return withArea(state, moveArea(state.area, getAreaSideOffset(action.side, state.area), state.area.offsetY), 'discrete')
+    case 'reset-area':
+      return withArea(state, { ...DEFAULT_PRINT_AREA }, 'discrete')
   }
 }
 
@@ -176,9 +237,16 @@ export function useMugCustomization() {
       updateTransform: (patch: Partial<PrintTransform>, kind: ChangeKind = 'continuous') =>
         dispatch({ type: 'transform', patch, kind }),
       setFit: (fit: FitMode) => dispatch({ type: 'transform', patch: { fit }, kind: 'discrete' }),
-      placeOnSide: (side: PrintSide) => dispatch({ type: 'place-side', side }),
       center: () => dispatch({ type: 'transform', patch: { offsetX: 0, offsetY: 0 }, kind: 'discrete' }),
       reset: () => dispatch({ type: 'reset-transform' }),
+      setArea: (area: PrintArea, kind: ChangeKind = 'continuous') => dispatch({ type: 'area', area, kind }),
+      setAreaShape: (shape: AreaShape) => dispatch({ type: 'area-shape', shape }),
+      setAreaSize: (dimension: AreaDimension, value: number) => dispatch({ type: 'area-size', dimension, value }),
+      moveArea: (offset: { offsetX?: number; offsetY?: number }, kind: ChangeKind = 'continuous') =>
+        dispatch({ type: 'area-move', ...offset, kind }),
+      placeAreaOnSide: (side: PrintSide) => dispatch({ type: 'area-side', side }),
+      centerArea: () => dispatch({ type: 'area-move', offsetX: 0, offsetY: 0, kind: 'discrete' }),
+      resetArea: () => dispatch({ type: 'reset-area' }),
       setColor: (region: MugColorRegion, color: string) => dispatch({ type: 'color', region, color }),
       resetColor: (region: MugColorRegion) => dispatch({ type: 'reset-color', region }),
     }),
@@ -187,10 +255,15 @@ export function useMugCustomization() {
 
   const summary = useMemo<PrintSummary | null>(() => {
     if (!state.image) return null
-    const printedSize = getPrintedSize(state.image.aspect, state.transform)
+    const printedSize = getPrintedSize(getImagePixels(state.image), state.transform, state.area)
     const dpi = getEffectiveDpi(state.image.originalWidth, state.image.originalHeight, printedSize)
-    return { printedSize, dpi, quality: getPrintQuality(dpi), cropped: isImageCropped(state.transform, printedSize) }
-  }, [state.image, state.transform])
+    return {
+      printedSize,
+      dpi,
+      quality: getPrintQuality(dpi),
+      cropped: isImageCropped(state.area, state.transform, printedSize),
+    }
+  }, [state.image, state.transform, state.area])
 
   return { state, summary, actions }
 }

@@ -2,13 +2,15 @@ import { useThree } from '@react-three/fiber'
 import { useEffect, useLayoutEffect, useRef } from 'react'
 import * as THREE from 'three'
 import { MUG } from '../../config/mugSpec'
-import { isInsidePrintArea, snapValue, surfaceToPrint, wrapAngle, type PrintTransform } from '../../lib/printMapping'
+import { isInsideArea, type PrintArea } from '../../lib/printArea'
+import { snapValue, surfaceToPrint, wrapAngle, type PrintTransform } from '../../lib/printMapping'
 
 interface PrintDragControllerProps {
   enabled: boolean
   /** Elemento que envolve o canvas; recebe os eventos na fase de captura. */
   container: HTMLElement | null
   transform: PrintTransform
+  area: PrintArea
   onMove(offset: Pick<PrintTransform, 'offsetX' | 'offsetY'>): void
   onDraggingChange(dragging: boolean): void
   onHoverChange(hovering: boolean): void
@@ -24,15 +26,15 @@ interface DragState {
   startOffsetY: number
 }
 
-/** Folga (cm) ao redor da área imprimível que ainda inicia o arraste. */
-const GRAB_MARGIN = 0.25
+/** Folga (cm) ao redor da área de impressão que ainda inicia o arraste. */
+const GRAB_MARGIN = 0.4
 /** Distância (cm) em que a estampa é atraída para o centro. */
 const SNAP_DISTANCE = 0.3
 
 /**
  * Arraste da estampa diretamente sobre a caneca.
  *
- * No modo de ajuste, um gesto que começa sobre a área imprimível move a estampa e é interrompido
+ * No modo de ajuste, um gesto que começa sobre a área de impressão move a estampa e é interrompido
  * na fase de captura, antes de chegar aos controles de câmera. Gestos que começam fora dela
  * continuam girando a caneca. A interseção é calculada analiticamente com o cilindro da parede,
  * o que é exato e barato, e continua funcionando quando o ponteiro passa da silhueta.
@@ -41,14 +43,15 @@ export function PrintDragController({
   enabled,
   container,
   transform,
+  area,
   onMove,
   onDraggingChange,
   onHoverChange,
 }: PrintDragControllerProps) {
   const camera = useThree((state) => state.camera)
-  const latest = useRef({ transform, onMove, onDraggingChange, onHoverChange })
+  const latest = useRef({ transform, area, onMove, onDraggingChange, onHoverChange })
   useLayoutEffect(() => {
-    latest.current = { transform, onMove, onDraggingChange, onHoverChange }
+    latest.current = { transform, area, onMove, onDraggingChange, onHoverChange }
   })
 
   useEffect(() => {
@@ -95,7 +98,7 @@ export function PrintDragController({
 
     const isOverPrintArea = (event: PointerEvent) => {
       const hit = intersectWall(castRay(event), false)
-      return !!hit && isInsidePrintArea(surfaceToPrint(hit.x, hit.y, hit.z), GRAB_MARGIN)
+      return !!hit && isInsideArea(latest.current.area, surfaceToPrint(hit.x, hit.y, hit.z), GRAB_MARGIN)
     }
 
     const onPointerDown = (event: PointerEvent) => {

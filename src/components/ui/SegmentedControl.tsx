@@ -14,10 +14,12 @@ interface SegmentedControlProps<T extends string> {
   /** Opção marcada; null quando o estado atual não corresponde a nenhuma delas. */
   value: T | null
   onChange(value: T): void
+  /** Opções mais estreitas, para grupos com quatro ou mais itens. */
+  compact?: boolean
 }
 
 /** Grupo de opções exclusivas, navegável pelas setas do teclado (padrão de "radio group"). */
-export function SegmentedControl<T extends string>({ label, options, value, onChange }: SegmentedControlProps<T>) {
+export function SegmentedControl<T extends string>({ label, options, value, onChange, compact }: SegmentedControlProps<T>) {
   const enabled = options.filter((option) => !option.disabled)
   const checkedOption = enabled.find((option) => option.value === value)
   // Sempre há exatamente uma opção alcançável pelo Tab.
@@ -35,7 +37,7 @@ export function SegmentedControl<T extends string>({ label, options, value, onCh
   }
 
   return (
-    <div className="segmented" role="radiogroup" aria-label={label} onKeyDown={onKeyDown}>
+    <div className={`segmented${compact ? ' segmented--compact' : ''}`} role="radiogroup" aria-label={label} onKeyDown={onKeyDown}>
       {options.map((option) => (
         <button
           key={option.value}

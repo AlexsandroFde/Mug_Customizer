@@ -1,5 +1,6 @@
 import { useId, type CSSProperties, type ReactNode } from 'react'
 import { snapValue } from '../../lib/printMapping'
+import { NumberField } from './NumberField'
 
 interface SliderFieldProps {
   label: string
@@ -9,8 +10,18 @@ interface SliderFieldProps {
   step: number
   /** Valor restaurado com um duplo clique. */
   defaultValue: number
+  /** Texto do valor para leitores de tela (por exemplo, "+1,5 cm"). */
   format(value: number): string
   onChange(value: number): void
+  /** Unidade do campo numérico editável ("cm", "%", "°"). */
+  unit: string
+  /** Multiplicador entre o valor interno e o exibido (100 para escalas em %). */
+  displayFactor?: number
+  decimals?: number
+  /** Mostra "+" em valores positivos. */
+  signed?: boolean
+  /** Informação complementar abaixo do rótulo (por exemplo, o tamanho em cm). */
+  detail?: string
   /** Valores que "atraem" o controle durante o arraste, como o centro. */
   snapPoints?: readonly number[]
   snapDistance?: number
@@ -30,6 +41,11 @@ export function SliderField({
   defaultValue,
   format,
   onChange,
+  unit,
+  displayFactor = 1,
+  decimals = 1,
+  signed = false,
+  detail,
   snapPoints,
   snapDistance = 0,
   disabled,
@@ -37,19 +53,33 @@ export function SliderField({
   origin = min,
 }: SliderFieldProps) {
   const id = useId()
-  const toPercent = (input: number) => ((input - min) / (max - min)) * 100
+  // Uma faixa vazia (min = max) desativa o controle, por exemplo quando a área ocupa toda a largura.
+  const empty = max - min < 1e-6
+  const inactive = disabled || empty
+  const toPercent = (input: number) => (empty ? 0 : ((input - min) / (max - min)) * 100)
   const fillStart = Math.min(toPercent(origin), toPercent(value))
   const fillEnd = Math.max(toPercent(origin), toPercent(value))
 
   return (
-    <div className="slider-field">
+    <div className={`slider-field${inactive ? ' slider-field--disabled' : ''}`}>
       <div className="slider-field__header">
-        <label htmlFor={id} className="slider-field__label">
-          {label}
-        </label>
-        <output htmlFor={id} className="slider-field__value">
-          {format(value)}
-        </output>
+        <div className="slider-field__heading">
+          <label htmlFor={id} className="slider-field__label">
+            {label}
+          </label>
+          {detail && <span className="slider-field__detail">{detail}</span>}
+        </div>
+        <NumberField
+          value={value}
+          factor={displayFactor}
+          decimals={decimals}
+          unit={unit}
+          signed={signed}
+          step={step}
+          label={`${label}, em ${unit}`}
+          disabled={inactive}
+          onCommit={onChange}
+        />
         {accessory}
       </div>
       <input
@@ -57,10 +87,10 @@ export function SliderField({
         type="range"
         className="slider"
         min={min}
-        max={max}
+        max={empty ? min + 1 : max}
         step={step}
         value={value}
-        disabled={disabled}
+        disabled={inactive}
         aria-valuetext={format(value)}
         title="Clique duas vezes para restaurar o valor padrão"
         style={{ '--fill-start': `${fillStart}%`, '--fill-end': `${fillEnd}%` } as CSSProperties}
