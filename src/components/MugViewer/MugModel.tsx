@@ -1,6 +1,7 @@
 import { useFrame, useThree } from '@react-three/fiber'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
+import type { MugColors } from '../../config/mugColors'
 import type { PrintImage } from '../../hooks/useMugCustomization'
 import { getPrintedSize, getRotationVector, normalizeDegrees, type PrintTransform } from '../../lib/printMapping'
 import { createMugGeometry } from './mugGeometry'
@@ -25,6 +26,7 @@ interface MugModelProps {
   /** Anima a mudança mais recente em vez de aplicá-la na hora. */
   animate: boolean
   guidesVisible: boolean
+  colors: MugColors
 }
 
 const isClose = (a: DisplayedPrint, b: DisplayedPrint) =>
@@ -34,13 +36,13 @@ const isClose = (a: DisplayedPrint, b: DisplayedPrint) =>
   Math.abs(a.height - b.height) < 1e-3 &&
   Math.abs(normalizeDegrees(a.rotation - b.rotation)) < 0.05
 
-export function MugModel({ image, transform, animate, guidesVisible }: MugModelProps) {
+export function MugModel({ image, transform, animate, guidesVisible, colors }: MugModelProps) {
   const invalidate = useThree((state) => state.invalidate)
   const anisotropy = useThree((state) => state.gl.capabilities.getMaxAnisotropy())
 
-  // Geometria e materiais são criados uma única vez; mudanças na estampa só alteram uniforms.
+  // Geometria e materiais são criados uma única vez; estampa e cores só alteram parâmetros.
   const geometry = useMemo(() => createMugGeometry(), [])
-  const materials = useMemo(() => createMugMaterials(geometry.interiorAo), [geometry])
+  const materials = useMemo(() => createMugMaterials(geometry.cavityVisibility), [geometry])
   const print = useMemo(() => createPrintMaterial(GLAZE), [])
   useEffect(
     () => () => {
@@ -56,6 +58,12 @@ export function MugModel({ image, transform, animate, guidesVisible }: MugModelP
     print.setTexture(texture)
     invalidate()
   }, [print, texture, invalidate])
+
+  // O objeto de cores só muda quando alguma cor muda; cada cor vai para o material da sua região.
+  useLayoutEffect(() => {
+    materials.setColors(colors)
+    invalidate()
+  }, [materials, colors, invalidate])
 
   const target = useMemo<DisplayedPrint>(() => {
     const size = getPrintedSize(image?.aspect ?? 1, transform)
@@ -131,8 +139,9 @@ export function MugModel({ image, transform, animate, guidesVisible }: MugModelP
       <mesh geometry={geometry.body.foot} material={materials.bisque} receiveShadow />
       <mesh geometry={geometry.body.heel} material={materials.glaze} castShadow receiveShadow />
       <mesh geometry={geometry.body.outerWall} material={print.material} castShadow receiveShadow />
-      <mesh geometry={geometry.body.interior} material={materials.interior} castShadow receiveShadow />
-      <mesh geometry={geometry.handle} material={materials.glaze} castShadow receiveShadow />
+      <mesh geometry={geometry.body.rim} material={materials.regions.rim} castShadow receiveShadow />
+      <mesh geometry={geometry.body.interior} material={materials.regions.interior} castShadow receiveShadow />
+      <mesh geometry={geometry.handle} material={materials.regions.handle} castShadow receiveShadow />
     </group>
   )
 }

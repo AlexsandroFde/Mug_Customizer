@@ -91,6 +91,7 @@ export default function App() {
           ref={viewer}
           image={state.image}
           transform={state.transform}
+          colors={state.colors}
           animate={state.changeKind === 'discrete'}
           mode={mode}
           onModeChange={setMode}

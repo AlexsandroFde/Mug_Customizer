@@ -2,6 +2,7 @@ import { ContactShadows } from '@react-three/drei'
 import { Canvas } from '@react-three/fiber'
 import { forwardRef, useCallback, useImperativeHandle, useRef, useState, type KeyboardEvent } from 'react'
 import * as THREE from 'three'
+import type { MugColors } from '../../config/mugColors'
 import type { ChangeKind, PrintImage } from '../../hooks/useMugCustomization'
 import { printOffsetToAngle, type PrintTransform } from '../../lib/printMapping'
 import { ErrorBoundary } from '../ui/ErrorBoundary'
@@ -22,6 +23,7 @@ export interface MugViewerHandle {
 interface MugViewerProps {
   image: PrintImage | null
   transform: PrintTransform
+  colors: MugColors
   animate: boolean
   mode: InteractionMode
   onModeChange(mode: InteractionMode): void
@@ -36,7 +38,19 @@ const ROTATE_STEP = THREE.MathUtils.degToRad(15)
 const TILT_STEP = THREE.MathUtils.degToRad(10)
 
 export const MugViewer = forwardRef<MugViewerHandle, MugViewerProps>(function MugViewer(
-  { image, transform, animate, mode, onModeChange, guidesVisible, loadingFileName, onPrintMove, onDraggingChange, onRequestUpload },
+  {
+    image,
+    transform,
+    colors,
+    animate,
+    mode,
+    onModeChange,
+    guidesVisible,
+    loadingFileName,
+    onPrintMove,
+    onDraggingChange,
+    onRequestUpload,
+  },
   ref,
 ) {
   const [container, setContainer] = useState<HTMLDivElement | null>(null)
@@ -133,7 +147,7 @@ export const MugViewer = forwardRef<MugViewerHandle, MugViewerProps>(function Mu
           }}
         >
           <StudioLighting />
-          <MugModel image={image} transform={transform} animate={animate} guidesVisible={guidesVisible} />
+          <MugModel image={image} transform={transform} animate={animate} guidesVisible={guidesVisible} colors={colors} />
           <ContactShadows position={[0, 0.001, 0]} scale={26} resolution={1024} far={7} blur={2.4} opacity={0.5} color="#1f2633" frames={1} />
           <CameraRig ref={rig} />
           <PrintDragController

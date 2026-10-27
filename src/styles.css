@@ -902,6 +902,210 @@ button {
   box-shadow: 0 0 0 4px var(--accent-ring);
 }
 
+/* ------------------------------------------------------------------ Mug colors */
+
+.color-editor {
+  display: grid;
+  gap: 12px;
+}
+
+.color-dot {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgba(16, 24, 40, 0.22);
+}
+
+.color-picker {
+  display: grid;
+  gap: 12px;
+}
+
+.color-picker__area {
+  position: relative;
+  height: 132px;
+  border-radius: 10px;
+  background:
+    linear-gradient(to top, #000, rgba(0, 0, 0, 0)),
+    linear-gradient(to right, #fff, hsl(var(--hue) 100% 50%));
+  box-shadow: inset 0 0 0 1px rgba(16, 24, 40, 0.1);
+  cursor: crosshair;
+  outline: none;
+  touch-action: none;
+}
+
+.color-picker__area:focus-visible {
+  box-shadow:
+    inset 0 0 0 1px rgba(16, 24, 40, 0.1),
+    0 0 0 3px var(--accent-ring);
+}
+
+.color-picker__knob {
+  position: absolute;
+  left: calc(var(--knob-radius) + var(--saturation) * (100% - 2 * var(--knob-radius)));
+  top: calc(var(--knob-radius) + (1 - var(--brightness)) * (100% - 2 * var(--knob-radius)));
+  width: calc(2 * var(--knob-radius));
+  height: calc(2 * var(--knob-radius));
+  border: 3px solid #fff;
+  border-radius: 50%;
+  background: var(--color);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.3), 0 2px 6px rgba(0, 0, 0, 0.3);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.color-picker__hue {
+  width: 100%;
+  height: 14px;
+  margin: 0;
+  border-radius: 999px;
+  background: linear-gradient(to right, #f00 0%, #ff0 16.67%, #0f0 33.33%, #0ff 50%, #00f 66.67%, #f0f 83.33%, #f00 100%);
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.color-picker__hue:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.color-picker__hue::-webkit-slider-thumb {
+  width: 20px;
+  height: 20px;
+  border: 3px solid #fff;
+  border-radius: 50%;
+  background: hsl(var(--hue) 100% 50%);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.3), 0 1px 4px rgba(0, 0, 0, 0.3);
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.color-picker__hue::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border: 3px solid #fff;
+  border-radius: 50%;
+  background: hsl(var(--hue) 100% 50%);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.3), 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+.color-editor__row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.color-editor__swatch {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  box-shadow: inset 0 0 0 1px rgba(16, 24, 40, 0.18);
+}
+
+.color-editor__reset {
+  min-height: 40px;
+}
+
+.hex-field {
+  flex: 1;
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.hex-field__box {
+  display: flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--surface);
+  font-family: ui-monospace, SFMono-Regular, Consolas, 'Liberation Mono', monospace;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.hex-field__box:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-ring);
+}
+
+.hex-field__box--invalid,
+.hex-field__box--invalid:focus-within {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 3px rgba(194, 55, 43, 0.18);
+}
+
+.hex-field__prefix {
+  margin-right: 2px;
+  color: var(--text-3);
+}
+
+.hex-field__input {
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font: inherit;
+  font-size: 14px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.hex-field__error {
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--danger);
+}
+
+.color-palette {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+  justify-items: center;
+}
+
+.color-palette__swatch {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  max-width: 38px;
+  aspect-ratio: 1;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--swatch);
+  box-shadow: inset 0 0 0 1px rgba(16, 24, 40, 0.2);
+  color: #fff;
+  cursor: pointer;
+  transition: transform 0.12s, box-shadow 0.12s;
+}
+
+.color-palette__swatch:hover {
+  transform: scale(1.08);
+}
+
+.color-palette__swatch[aria-pressed='true'] {
+  box-shadow:
+    inset 0 0 0 1px rgba(16, 24, 40, 0.2),
+    0 0 0 2px var(--surface),
+    0 0 0 4px var(--accent);
+}
+
+.color-palette__swatch:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+}
+
+.color-palette__check--dark {
+  color: var(--text);
+}
+
 /* ------------------------------------------------------------------ Print notes */
 
 .print-notes {

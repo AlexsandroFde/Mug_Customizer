@@ -26,6 +26,9 @@ export const MUG = {
   footContactRadius: 3.3,
 } as const
 
+/** Cor original do esmalte cerâmico (sRGB). */
+export const GLAZE_COLOR = '#f7f6f2'
+
 export const HANDLE = {
   /** Direção da alça em torno do eixo vertical (0 = +Z, π/2 = +X), no padrão atan2(x, z). */
   angle: Math.PI / 2,

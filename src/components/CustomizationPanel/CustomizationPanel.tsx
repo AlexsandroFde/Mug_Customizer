@@ -20,6 +20,7 @@ import {
 import { ImageUploader, type ImageUploaderHandle } from '../ImageUploader/ImageUploader'
 import { Icon } from '../ui/Icon'
 import { SegmentedControl, type SegmentedOption } from '../ui/SegmentedControl'
+import { MugColorEditor } from './MugColorEditor'
 import { PrintLayoutEditor } from './PrintLayoutEditor'
 import { SliderField } from './SliderField'
 
@@ -223,6 +224,13 @@ export function CustomizationPanel({
           <PrintNotes summary={summary} hasTransparency={image.hasTransparency} />
         </section>
       )}
+
+      <section className="panel__section" aria-labelledby="section-colors">
+        <h2 id="section-colors" className="section-title">
+          Cores da caneca
+        </h2>
+        <MugColorEditor colors={state.colors} onChange={actions.setColor} onReset={actions.resetColor} />
+      </section>
     </div>
   )
 }

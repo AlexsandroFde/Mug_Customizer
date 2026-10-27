@@ -1,6 +1,6 @@
 # Caneca personalizada
 
-Personalizador de canecas com visualização 3D em tempo real. O usuário escolhe uma imagem do próprio dispositivo, vê a estampa aplicada na superfície de uma caneca cerâmica tridimensional e ajusta posição, tamanho, rotação e encaixe antes de produzir.
+Personalizador de canecas com visualização 3D em tempo real. O usuário escolhe uma imagem do próprio dispositivo, vê a estampa aplicada na superfície de uma caneca cerâmica tridimensional e ajusta posição, tamanho, rotação e encaixe antes de produzir. Também pode escolher, de forma independente, as cores da alça, da borda e do interior.
 
 Nada é enviado para a internet: a imagem é lida e processada localmente, no navegador.
 
@@ -27,14 +27,17 @@ npm run lint      # Oxlint
 
 ```
 src/
-  config/mugSpec.ts              Medidas da caneca, da alça, da área de impressão e limites de arquivo
+  config/
+    mugSpec.ts                   Medidas da caneca, da alça, da área de impressão e limites de arquivo
+    mugColors.ts                 Regiões coloríveis, cores originais e paleta sugerida
   lib/
     printMapping.ts              Matemática do posicionamento (a mesma do shader, testada)
+    color.ts                     Validação de hexadecimal e conversões RGB/HSV
     imageFile.ts                 Validação: assinatura binária, tamanho e dimensões lidas do cabeçalho
     imageProcessing.ts           Decodificação, redução em etapas, miniatura e detecção de transparência
     format.ts                    Números no padrão brasileiro
   hooks/
-    useMugCustomization.ts       Estado da personalização (imagem, ajustes, status do envio)
+    useMugCustomization.ts       Estado da personalização (imagem, ajustes, cores, status do envio)
     useFileDrop.ts               Arrastar e soltar arquivos em qualquer ponto da página
     useCoarsePointer.ts          Detecta dispositivos de toque para adaptar as dicas
   components/
@@ -42,15 +45,15 @@ src/
       MugViewer.tsx              Canvas, sobreposições e teclado
       MugModel.tsx               Malhas da caneca e atualização dos parâmetros da estampa
       mugGeometry.ts             Geometria procedural (perfil de revolução, alça, oclusão do interior)
-      mugMaterials.ts            Esmalte, interior com oclusão especular e anel sem esmalte
+      mugMaterials.ts            Esmalte, materiais por região (alça, borda, interior) e anel sem esmalte
       MugTexture.ts              Textura da estampa e material que a aplica na parede externa
       StudioLighting.tsx         Softboxes, luz principal com sombra e rig que acompanha a câmera
       CameraRig.tsx              Controles de câmera, limites, vistas pré-definidas e enquadramento
       PrintDragController.tsx    Arraste da estampa diretamente sobre a caneca
       ViewerOverlay.tsx          Vistas, modos, zoom, carregamento e perda de contexto WebGL
-    CustomizationPanel/          Painel de ajustes, editor 2D da área de impressão e sliders
+    CustomizationPanel/          Painel de ajustes, editor 2D da área de impressão, sliders e cores
     ImageUploader/               Seleção de arquivo, erros e cartão da imagem
-    ui/                          Ícones, controle segmentado e tratamento de erros
+    ui/                          Ícones, controle segmentado, seletor de cor e tratamento de erros
 ```
 
 ## Decisões técnicas
@@ -60,6 +63,8 @@ src/
 **Aparência de impressão por sublimação.** A tinta tinge o esmalte por multiplicação: o branco da imagem é o próprio branco da cerâmica, então fundos brancos não formam um "retângulo". A textura usa alfa pré-multiplicado (sem franjas escuras nas bordas transparentes), mipmaps e filtragem anisotrópica, e as bordas da estampa são antisserrilhadas com `fwidth`. O editor 2D usa a mesma mistura (`mix-blend-mode: multiply`).
 
 **Realismo da caneca.** O perfil tem base com anel de apoio sem esmalte, calcanhar e borda arredondados e interior com concordância no fundo; a alça é uma varredura de seção de superelipse com a junção alargada como um filete de cerâmica. A oclusão ambiente do interior é calculada por amostragem de raios contra a cavidade (validada nos testes contra os fatores de forma analíticos), e reflexos do ambiente que a própria parede bloquearia são atenuados no shader do interior.
+
+**Cores por região.** Alça, borda e interior são malhas separadas, cada uma com seu próprio material; base, calcanhar e a parede com a estampa usam outros materiais e nunca mudam de cor. A borda é exatamente o acabamento arredondado do topo, de uma tangente à outra, então a cor não invade a parede externa nem o interior. Trocar uma cor altera só `material.color` da região (sem recriar geometria, texturas ou shaders) e não toca na estampa nem na câmera. A oclusão ambiente da borda e do interior é recalculada conforme a cor do interior, já que um interior escuro rebate menos luz. No estado, as cores ficam em `colors.handle`, `colors.rim` e `colors.interior`, como hexadecimal `#rrggbb`: dados simples, prontos para serem salvos caso a aplicação ganhe persistência.
 
 **Gestos sem conflito.** No modo "Girar", arrastar gira a câmera. No modo "Mover estampa", um gesto que começa sobre a área imprimível é capturado antes de chegar aos controles de câmera e move a estampa; fora dela, a caneca continua girando. O editor 2D, os sliders e as setas do teclado oferecem alternativas precisas e acessíveis.
 

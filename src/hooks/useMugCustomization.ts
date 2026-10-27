@@ -1,5 +1,7 @@
 import { useCallback, useMemo, useReducer, useRef } from 'react'
+import { DEFAULT_MUG_COLORS, type MugColorRegion, type MugColors } from '../config/mugColors'
 import { TEXTURE_MAX_SIDE } from '../config/mugSpec'
+import { parseHexColor } from '../lib/color'
 import { ImageFileError, validateImageFile, type ImageFormat } from '../lib/imageFile'
 import { processImageFile, releaseCanvas } from '../lib/imageProcessing'
 import {
@@ -46,6 +48,8 @@ export interface CustomizationState {
   transform: PrintTransform
   changeKind: ChangeKind
   upload: UploadStatus
+  /** Cores da alça, da borda e do interior, independentes entre si e da estampa. */
+  colors: MugColors
 }
 
 export interface PrintSummary {
@@ -55,7 +59,7 @@ export interface PrintSummary {
   cropped: boolean
 }
 
-type Action =
+export type CustomizationAction =
   | { type: 'upload-start'; fileName: string }
   | { type: 'upload-success'; image: PrintImage }
   | { type: 'upload-error'; message: string }
@@ -64,33 +68,48 @@ type Action =
   | { type: 'transform'; patch: Partial<PrintTransform>; kind: ChangeKind }
   | { type: 'place-side'; side: PrintSide }
   | { type: 'reset-transform' }
+  | { type: 'color'; region: MugColorRegion; color: string }
+  | { type: 'reset-color'; region: MugColorRegion }
 
-const initialState: CustomizationState = {
+export const initialCustomizationState: CustomizationState = {
   image: null,
   transform: { ...DEFAULT_TRANSFORM },
   changeKind: 'continuous',
   upload: { state: 'idle' },
+  colors: { ...DEFAULT_MUG_COLORS },
 }
 
-function reducer(state: CustomizationState, action: Action): CustomizationState {
+function withColor(state: CustomizationState, region: MugColorRegion, color: string): CustomizationState {
+  // Só a região indicada muda; as outras cores e o restante do estado ficam como estão.
+  return state.colors[region] === color ? state : { ...state, colors: { ...state.colors, [region]: color } }
+}
+
+export function customizationReducer(state: CustomizationState, action: CustomizationAction): CustomizationState {
   switch (action.type) {
     case 'upload-start':
       return { ...state, upload: { state: 'loading', fileName: action.fileName } }
     case 'upload-success':
       // Uma imagem nova sempre começa encaixada e centralizada.
-      return { image: action.image, transform: { ...DEFAULT_TRANSFORM }, changeKind: 'continuous', upload: { state: 'idle' } }
+      return { ...state, image: action.image, transform: { ...DEFAULT_TRANSFORM }, changeKind: 'continuous', upload: { state: 'idle' } }
     case 'upload-error':
       return { ...state, upload: { state: 'error', message: action.message } }
     case 'dismiss-error':
       return state.upload.state === 'error' ? { ...state, upload: { state: 'idle' } } : state
     case 'remove-image':
       return {
+        ...state,
         image: null,
         transform: { ...DEFAULT_TRANSFORM },
         changeKind: 'continuous',
         // Remover também cancela um envio em andamento.
         upload: state.upload.state === 'loading' ? { state: 'idle' } : state.upload,
       }
+    case 'color': {
+      const color = parseHexColor(action.color)
+      return color ? withColor(state, action.region, color) : state
+    }
+    case 'reset-color':
+      return withColor(state, action.region, DEFAULT_MUG_COLORS[action.region])
     case 'transform':
       return { ...state, transform: clampTransform({ ...state.transform, ...action.patch }), changeKind: action.kind }
     case 'place-side': {
@@ -111,9 +130,9 @@ function getMaxTextureSide() {
 
 const UNEXPECTED_ERROR = 'Ocorreu um erro inesperado ao carregar a imagem. Tente novamente.'
 
-/** Estado da personalização: imagem escolhida, posicionamento da estampa e status do envio. */
+/** Estado da personalização: imagem, posicionamento da estampa, cores da caneca e status do envio. */
 export function useMugCustomization() {
-  const [state, dispatch] = useReducer(reducer, initialState)
+  const [state, dispatch] = useReducer(customizationReducer, initialCustomizationState)
   const latestRequest = useRef(0)
   const nextImageId = useRef(1)
 
@@ -160,6 +179,8 @@ export function useMugCustomization() {
       placeOnSide: (side: PrintSide) => dispatch({ type: 'place-side', side }),
       center: () => dispatch({ type: 'transform', patch: { offsetX: 0, offsetY: 0 }, kind: 'discrete' }),
       reset: () => dispatch({ type: 'reset-transform' }),
+      setColor: (region: MugColorRegion, color: string) => dispatch({ type: 'color', region, color }),
+      resetColor: (region: MugColorRegion) => dispatch({ type: 'reset-color', region }),
     }),
     [loadFile],
   )

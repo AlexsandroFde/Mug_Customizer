@@ -12,7 +12,7 @@ import {
   type BodyRegion,
 } from './mugGeometry'
 
-const REGION_ORDER: BodyRegion[] = ['base', 'foot', 'heel', 'outerWall', 'interior']
+const REGION_ORDER: BodyRegion[] = ['base', 'foot', 'heel', 'outerWall', 'rim', 'interior']
 const INNER_RADIUS = MUG.outerRadius - MUG.wallThickness
 const OPENING_Y = MUG.height - MUG.wallThickness / 2
 
@@ -62,6 +62,25 @@ describe('perfil da caneca', () => {
     expect(wall[0].y).toBeLessThanOrEqual(PRINT_AREA.bottom)
     expect(wall.at(-1)!.y).toBeGreaterThanOrEqual(PRINT_AREA.top)
     for (const point of wall) expect(point.r).toBeCloseTo(MUG.outerRadius, 6)
+  })
+
+  it('a borda é só o acabamento arredondado: vai da tangente externa à interna, acima das paredes', () => {
+    const rim = profile.rim
+    expect(rim[0]).toMatchObject({ r: expect.closeTo(MUG.outerRadius, 6), y: expect.closeTo(OPENING_Y, 6) })
+    expect(rim.at(-1)!).toMatchObject({ r: expect.closeTo(INNER_RADIUS, 6), y: expect.closeTo(OPENING_Y, 6) })
+    for (const point of rim) {
+      expect(point.y).toBeGreaterThanOrEqual(OPENING_Y - 1e-9)
+      expect(point.r).toBeGreaterThanOrEqual(INNER_RADIUS - 1e-9)
+      expect(point.r).toBeLessThanOrEqual(MUG.outerRadius + 1e-9)
+    }
+    expect(Math.max(...rim.map((point) => point.y))).toBeCloseTo(MUG.height, 6)
+  })
+
+  it('o interior fica inteiro dentro da cavidade, abaixo da borda', () => {
+    for (const point of profile.interior) {
+      expect(point.r).toBeLessThanOrEqual(INNER_RADIUS + 1e-9)
+      expect(point.y).toBeLessThanOrEqual(OPENING_Y + 1e-9)
+    }
   })
 })
 
@@ -138,6 +157,13 @@ describe('oclusão ambiente do interior', () => {
     const visibility = wall.map((point) => cavityVisibility(point, 2048))
     for (let i = 1; i < visibility.length; i++) expect(visibility[i]).toBeLessThanOrEqual(visibility[i - 1] + 0.02)
     expect(visibility.at(-1)!).toBeLessThan(visibility[0])
+  })
+
+  it('é contínua nas junções da borda, sem degrau de sombreamento quando as cores são iguais', () => {
+    // Do lado de fora, a borda encontra a parede externa (que não tem oclusão): visibilidade total.
+    expect(cavityVisibility(profile.rim[0])).toBeCloseTo(1, 2)
+    // Do lado de dentro, borda e interior compartilham o mesmo ponto e a mesma normal.
+    expect(cavityVisibility(profile.rim.at(-1)!)).toBe(cavityVisibility(profile.interior[0]))
   })
 
   it('a área imprimível tem a altura especificada', () => {

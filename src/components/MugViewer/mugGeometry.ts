@@ -3,9 +3,10 @@
  *
  * O corpo é uma superfície de revolução gerada a partir de um perfil contínuo (com normais
  * analíticas) e dividida em regiões, cada uma com sua malha e seu material:
- * base, anel de apoio, calcanhar, parede externa (única região que recebe a estampa) e
- * interior (borda, parede interna e fundo). A alça é uma varredura de uma seção de
- * superelipse ao longo de uma curva suave, com as pontas embutidas na parede.
+ * base, anel de apoio, calcanhar, parede externa (única região que recebe a estampa),
+ * borda (o acabamento arredondado do topo) e interior (parede interna e fundo).
+ * A alça é uma varredura de uma seção de superelipse ao longo de uma curva suave,
+ * com as pontas embutidas na parede.
  */
 import * as THREE from 'three'
 import { HANDLE, MUG } from '../../config/mugSpec'
@@ -19,13 +20,19 @@ export interface ProfilePoint {
   ny: number
 }
 
-export type BodyRegion = 'base' | 'foot' | 'heel' | 'outerWall' | 'interior'
+export type BodyRegion = 'base' | 'foot' | 'heel' | 'outerWall' | 'rim' | 'interior'
+
+/** Regiões voltadas para a cavidade, que recebem oclusão ambiente. */
+export type CavityRegion = 'rim' | 'interior'
 
 export interface MugGeometry {
   body: Record<BodyRegion, THREE.BufferGeometry>
   handle: THREE.BufferGeometry
-  /** Oclusão ambiente do interior, indexada pela coordenada v da malha "interior". */
-  interiorAo: THREE.DataTexture
+  /**
+   * Fração do hemisfério que enxerga o exterior em cada ponto do perfil, na ordem das linhas
+   * da malha (a coordenada v aponta para o valor correspondente).
+   */
+  cavityVisibility: Record<CavityRegion, number[]>
   dispose(): void
 }
 
@@ -35,8 +42,6 @@ export const RADIAL_SEGMENTS = 256
 export const HANDLE_RINGS = 160
 export const HANDLE_SIDES = 48
 const AO_SAMPLES = 1536
-/** Refletância do esmalte branco, usada na aproximação de múltiplos rebatimentos de luz. */
-const GLAZE_ALBEDO = 0.85
 
 const INNER_RADIUS = MUG.outerRadius - MUG.wallThickness
 const RIM_RADIUS = MUG.wallThickness / 2
@@ -102,8 +107,9 @@ export function createProfile(): Record<BodyRegion, ProfilePoint[]> {
     ),
     heel: arc(R - heel, heel, heel, -Math.PI / 2, 0, 12),
     outerWall: line(R, heel, R, OPENING_Y, 12),
+    // A borda vai de uma tangente à outra: termina exatamente onde começam as paredes retas.
+    rim: arc(R - RIM_RADIUS, OPENING_Y, RIM_RADIUS, 0, Math.PI, 20),
     interior: join(
-      arc(R - RIM_RADIUS, OPENING_Y, RIM_RADIUS, 0, Math.PI, 20),
       line(INNER_RADIUS, OPENING_Y, INNER_RADIUS, floor + fillet, 28),
       arc(INNER_RADIUS - fillet, floor + fillet, fillet, 0, -Math.PI / 2, 16),
       line(INNER_RADIUS - fillet, floor, 0, floor, 16),
@@ -305,30 +311,6 @@ export function cavityVisibility(point: ProfilePoint, samples = AO_SAMPLES) {
   return visible / samples
 }
 
-/**
- * Aproximação de múltiplos rebatimentos (Jimenez et al., 2016): superfícies claras devolvem
- * parte da luz, então o interior de uma caneca branca escurece bem menos do que a oclusão pura sugere.
- */
-export function multiBounceAo(visibility: number, albedo = GLAZE_ALBEDO) {
-  const a = 2.0404 * albedo - 0.3324
-  const b = -4.7951 * albedo + 0.6417
-  const c = 2.7552 * albedo + 0.6903
-  return Math.max(visibility, ((visibility * a + b) * visibility + c) * visibility)
-}
-
-function createAoTexture(values: number[]) {
-  const data = new Uint8Array(values.length * 4)
-  values.forEach((value, index) => {
-    const byte = Math.round(THREE.MathUtils.clamp(value, 0, 1) * 255)
-    data.set([byte, byte, byte, 255], index * 4)
-  })
-  const texture = new THREE.DataTexture(data, 1, values.length, THREE.RGBAFormat, THREE.UnsignedByteType)
-  texture.magFilter = THREE.LinearFilter
-  texture.minFilter = THREE.LinearFilter
-  texture.needsUpdate = true
-  return texture
-}
-
 // ---------------------------------------------------------------------------
 
 export function createMugGeometry(): MugGeometry {
@@ -337,16 +319,17 @@ export function createMugGeometry(): MugGeometry {
     (Object.keys(profile) as BodyRegion[]).map((region) => [region, createLathe(profile[region])]),
   ) as Record<BodyRegion, THREE.BufferGeometry>
   const handle = createHandleGeometry()
-  const interiorAo = createAoTexture(profile.interior.map((point) => multiBounceAo(cavityVisibility(point))))
 
   return {
     body,
     handle,
-    interiorAo,
+    cavityVisibility: {
+      rim: profile.rim.map((point) => cavityVisibility(point)),
+      interior: profile.interior.map((point) => cavityVisibility(point)),
+    },
     dispose() {
       Object.values(body).forEach((geometry) => geometry.dispose())
       handle.dispose()
-      interiorAo.dispose()
     },
   }
 }
