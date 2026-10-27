@@ -1,0 +1,52 @@
+import type { SVGProps } from 'react'
+
+/** Traçados em uma grade de 24×24, desenhados com contorno arredondado. */
+const PATHS = {
+  upload: ['M12 15V4', 'M7.5 8.5 12 4l4.5 4.5', 'M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3'],
+  image: ['M5 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z', 'M10 9.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0z', 'm3 17 5-5 3.5 3.5L15 12l6 6'],
+  replace: ['M20 11a8 8 0 0 0-14.3-4.9L4 8', 'M4 4v4h4', 'M4 13a8 8 0 0 0 14.3 4.9L20 16', 'M20 20v-4h-4'],
+  trash: ['M4 7h16', 'M10 11v6', 'M14 11v6', 'M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12', 'M9 7V4h6v3'],
+  orbit: ['M20.5 12a8.5 8.5 0 1 1-2.5-6', 'M20.5 3.5V8H16', 'M12 8.5v7', 'M8.5 12h7'],
+  move: ['M12 3v18', 'M3 12h18', 'm9 6 3-3 3 3', 'm9 18 3 3 3-3', 'm6 9-3 3 3 3', 'm18 9 3 3-3 3'],
+  zoomIn: ['M18 11a7 7 0 1 1-14 0 7 7 0 0 1 14 0z', 'm20 20-4-4', 'M11 8v6', 'M8 11h6'],
+  zoomOut: ['M18 11a7 7 0 1 1-14 0 7 7 0 0 1 14 0z', 'm20 20-4-4', 'M8 11h6'],
+  focus: ['M3 8V5a2 2 0 0 1 2-2h3', 'M16 3h3a2 2 0 0 1 2 2v3', 'M21 16v3a2 2 0 0 1-2 2h-3', 'M8 21H5a2 2 0 0 1-2-2v-3', 'M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z'],
+  center: ['M4 4h16v16H4z', 'M12 8v8', 'M8 12h8'],
+  reset: ['M3.5 12a8.5 8.5 0 1 0 2.5-6', 'M3.5 3.5V8H8'],
+  rotate: ['M20 12a8 8 0 1 1-2.34-5.66', 'M20 4v4h-4'],
+  alert: ['M10.3 4.3 2.6 17.5A2 2 0 0 0 4.3 20.5h15.4a2 2 0 0 0 1.7-3L13.7 4.3a2 2 0 0 0-3.4 0z', 'M12 9.5v4', 'M12 17h.01'],
+  info: ['M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z', 'M12 11v5', 'M12 8h.01'],
+  check: ['m5 12.5 4.5 4.5L19 7.5'],
+  close: ['M6 6l12 12', 'M18 6 6 18'],
+  mug: ['M5 6h11v10a4 4 0 0 1-4 4H9a4 4 0 0 1-4-4V6z', 'M16 9h1.5a2.5 2.5 0 0 1 0 5H16'],
+  transparency: ['M4 4h16v16H4z', 'M4 12h8v8', 'M12 4v8h8'],
+} as const
+
+export type IconName = keyof typeof PATHS
+
+interface IconProps extends SVGProps<SVGSVGElement> {
+  name: IconName
+  size?: number
+}
+
+export function Icon({ name, size = 20, ...props }: IconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+      {...props}
+    >
+      {PATHS[name].map((path) => (
+        <path key={path} d={path} />
+      ))}
+    </svg>
+  )
+}
