@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CustomizationPanel, type PanelActions, type PanelTab } from './components/CustomizationPanel/CustomizationPanel'
+import { ExportDialog } from './components/ExportDialog/ExportDialog'
 import { ImageFileInput, type ImageFileInputHandle } from './components/ImageUploader/ImageUploader'
 import type { PartHighlight } from './components/MugViewer/MugModel'
 import { MugViewer, type InteractionMode, type MugViewerHandle } from './components/MugViewer/MugViewer'
@@ -7,23 +8,15 @@ import { Icon } from './components/ui/Icon'
 import { Toast, type ToastMessage } from './components/ui/Toast'
 import { resolveMugColors, type MugPart } from './config/mugColors'
 import { useFileDrop } from './hooks/useFileDrop'
+import { downloadBlob } from './lib/download'
+import { formatFileSize } from './lib/format'
 import { isPristine, useMugCustomization, type AreaDimension, type ChangeKind } from './hooks/useMugCustomization'
 import { getAreaSideOffset, type AreaShape, type PrintArea } from './lib/printArea'
 import type { FitMode, PrintSide, PrintTransform } from './lib/printMapping'
 
 /** Tempo que as guias continuam visíveis na caneca depois do último ajuste da estampa. */
 const GUIDES_LINGER_MS = 1200
-const EXPORT_FILE_NAME = 'caneca-personalizada.png'
-
-function downloadBlob(blob: Blob, fileName: string) {
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = fileName
-  link.click()
-  // O download já começou; o endereço temporário pode ser liberado logo depois.
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
-}
+const PHOTO_FILE_NAME = 'foto-caneca.png'
 
 export default function App() {
   const { state, summary, actions } = useMugCustomization()
@@ -37,7 +30,8 @@ export default function App() {
   const [draggingIn2d, setDraggingIn2d] = useState(false)
   const [recentlyAdjusted, setRecentlyAdjusted] = useState(false)
   const [toast, setToast] = useState<ToastMessage | null>(null)
-  const [exporting, setExporting] = useState(false)
+  const [savingPhoto, setSavingPhoto] = useState(false)
+  const [exportOpen, setExportOpen] = useState(false)
   const lingerTimer = useRef<number | undefined>(undefined)
   const toastId = useRef(0)
 
@@ -145,17 +139,18 @@ export default function App() {
     })
   }
 
-  const exportImage = async () => {
-    setExporting(true)
+  /** Foto da caneca como aparece na tela (a estampa planificada sai pelo diálogo de exportação). */
+  const savePhoto = async () => {
+    setSavingPhoto(true)
     try {
       const blob = await viewer.current?.capture()
       if (!blob) throw new Error('captura vazia')
-      downloadBlob(blob, EXPORT_FILE_NAME)
+      downloadBlob(blob, PHOTO_FILE_NAME)
     } catch (error) {
       console.error(error)
-      setToast({ id: ++toastId.current, text: 'Não foi possível gerar a imagem. Tente novamente.' })
+      setToast({ id: ++toastId.current, text: 'Não foi possível gerar a foto. Tente novamente.' })
     } finally {
-      setExporting(false)
+      setSavingPhoto(false)
     }
   }
 
@@ -196,6 +191,8 @@ export default function App() {
           onModeChange={setMode}
           guidesVisible={guidesVisible}
           onToggleGuides={toggleGuides}
+          onSavePhoto={savePhoto}
+          savingPhoto={savingPhoto}
           loadingFileName={state.upload.state === 'loading' ? state.upload.fileName : null}
           onPrintMove={handleTransformChange}
           onDraggingChange={setDraggingIn3d}
@@ -221,10 +218,22 @@ export default function App() {
           onLayoutDraggingChange={setDraggingIn2d}
           pristine={isPristine(state)}
           onResetAll={resetAll}
-          exporting={exporting}
-          onExport={exportImage}
+          onOpenExport={() => setExportOpen(true)}
         />
       </aside>
+
+      <ExportDialog
+        open={exportOpen}
+        onClose={() => setExportOpen(false)}
+        image={state.image}
+        transform={state.transform}
+        area={state.area}
+        bodyColor={colors.body}
+        onRequestUpload={() => filePicker.current?.open()}
+        onExported={({ fileName, bytes }) =>
+          setToast({ id: ++toastId.current, text: `Estampa exportada: ${fileName} (${formatFileSize(bytes)}).` })
+        }
+      />
 
       <ImageFileInput ref={filePicker} onFile={actions.loadFile} />
 

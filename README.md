@@ -1,6 +1,6 @@
 # Caneca personalizada
 
-Personalizador de canecas com visualização 3D em tempo real. O usuário escolhe uma imagem do próprio dispositivo, define a área da caneca que receberá a impressão (formato, dimensões e posição), ajusta o encaixe, a posição, o tamanho e a rotação da imagem dentro dessa área e confere tudo na caneca tridimensional antes de produzir. Também escolhe a cor da caneca inteira e, se quiser, cores próprias para a alça, a borda e o interior. O resultado pode ser baixado como uma imagem PNG.
+Personalizador de canecas com visualização 3D em tempo real. O usuário escolhe uma imagem do próprio dispositivo, define a área da caneca que receberá a impressão (formato, dimensões e posição), ajusta o encaixe, a posição, o tamanho e a rotação da imagem dentro dessa área e confere tudo na caneca tridimensional antes de produzir. Também escolhe a cor da caneca inteira e, se quiser, cores próprias para a alça, a borda e o interior. A estampa pode ser exportada como arte planificada (PNG, JPEG ou WebP) em alta resolução, pronta para uso ou impressão, e a caneca pode ser baixada como foto 3D.
 
 Nada é enviado para a internet: a imagem é lida e processada localmente, no navegador.
 
@@ -33,6 +33,9 @@ src/
   lib/
     printArea.ts                 Área de impressão: formatos, dimensões, escala, limites e alças do editor 2D
     printMapping.ts              Encaixe e posicionamento da imagem na área (a mesma matemática do shader)
+    exportArt.ts                 Exportação da estampa: composição, tamanhos de saída, desenho e codificação
+    imageMetadata.ts             Resolução (dpi) gravada no PNG (pHYs) e no JPEG (JFIF)
+    download.ts                  Download de arquivos gerados no navegador
     color.ts                     Validação de hexadecimal e conversões RGB/HSV
     imageFile.ts                 Validação: assinatura binária, tamanho e dimensões lidas do cabeçalho
     imageProcessing.ts           Decodificação, redução em etapas, miniatura e detecção de transparência
@@ -51,11 +54,12 @@ src/
       StudioLighting.tsx         Softboxes, luz principal com sombra e rig que acompanha a câmera
       CameraRig.tsx              Controles de câmera, limites, vistas pré-definidas e enquadramento
       PrintDragController.tsx    Arraste da estampa diretamente sobre a caneca
-      SceneCapture.tsx           Exportação da vista atual em PNG, sem guias nem destaques
+      SceneCapture.tsx           Foto da vista atual em PNG, sem guias nem destaques
       ViewerOverlay.tsx          Vistas, botão de guias, modos, zoom, carregamento e perda de contexto WebGL
     CustomizationPanel/          Painel em abas (Estampa, Área, Cores), editor 2D e rodapé com as ações gerais
+    ExportDialog/                Diálogo de exportação: prévia, resolução, formato, qualidade e fundo
     ImageUploader/               Campo de arquivo, adicionar, substituir e remover a imagem, erros
-    ui/                          Ícones, abas, grupos, controle segmentado, interruptor, seletor de cor, aviso
+    ui/                          Ícones, abas, grupos, controles segmentados, campos numérico e hexadecimal, interruptor, seletor de cor, aviso
 ```
 
 ## Decisões técnicas
@@ -82,9 +86,16 @@ A imagem (`state.transform`) é posicionada a partir do centro da área, e o enc
 
 **Guias de edição.** Limite físico hachurado, área tracejada em azul (em âmbar contínuo onde encosta no limite) e contorno da imagem em vinho, com as mesmas cores na caneca e no editor 2D. Elas aparecem sozinhas na aba Área e no modo "Mover estampa", e o botão "Guias", na cena, oculta tudo para ver o resultado final. As guias são desenhadas só na visualização, nunca na arte.
 
-**Interface.** A cena 3D ocupa a maior parte da tela; o painel lateral (embaixo, em telas estreitas) tem três abas na ordem natural de uso, Estampa, Área e Cores, e um rodapé fixo com as ações gerais: "Redefinir" (estampa, área e cores voltam ao padrão, com "Desfazer" num aviso, e a imagem é mantida) e "Baixar imagem" (PNG da vista atual com fundo transparente, renderizado sem guias nem destaques). As abas só mudam o que é exibido; nenhuma configuração se perde ao alternar. Sem imagem, a aba Estampa oferece o envio e um atalho para começar pelas cores. Na aba Cores, passar o ponteiro sobre a caneca destaca a parte, e clicar a seleciona no painel; o destaque usa um tom azul em partes claras e um brilho claro em partes escuras. Os estilos usam tokens únicos (cores, espaçamento em múltiplos de 4, tipografia, raios e alturas de controle), com alvos de toque de pelo menos 44 px em telas sensíveis ao toque.
+**Interface.** A cena 3D ocupa a maior parte da tela; o painel lateral (embaixo, em telas estreitas) tem três abas na ordem natural de uso, Estampa, Área e Cores, e um rodapé fixo com as ações gerais: "Redefinir" (estampa, área e cores voltam ao padrão, com "Desfazer" num aviso, e a imagem é mantida) e "Exportar estampa" (abre o diálogo de exportação). O botão de câmera, na barra sobre a cena, baixa uma foto da caneca como aparece na tela (PNG com fundo transparente, sem guias nem destaques). As abas só mudam o que é exibido; nenhuma configuração se perde ao alternar. Sem imagem, a aba Estampa oferece o envio e um atalho para começar pelas cores. Na aba Cores, passar o ponteiro sobre a caneca destaca a parte, e clicar a seleciona no painel; o destaque usa um tom azul em partes claras e um brilho claro em partes escuras. Os estilos usam tokens únicos (cores, espaçamento em múltiplos de 4, tipografia, raios e alturas de controle), com alvos de toque de pelo menos 44 px em telas sensíveis ao toque.
 
 **Gestos sem conflito.** No modo "Girar", arrastar gira a câmera; na aba Cores, um toque ou clique sem arraste seleciona a parte da caneca. No modo "Mover estampa", um gesto que começa sobre a área de impressão é capturado antes de chegar aos controles de câmera e move a estampa; fora dela, a caneca continua girando. O editor 2D (que move a imagem, ou move e redimensiona a área pelas alças quando a aba Área está aberta), os sliders com campos numéricos e as setas do teclado oferecem alternativas precisas e acessíveis.
+
+**Exportação da estampa.** O arquivo é a arte planificada da área de impressão, sem a caneca, a cena ou as guias: exatamente a região da área (a proporção é sempre a dela, sem margens nem cortes extras) com a imagem posicionada pelas mesmas funções do shader e do editor 2D (`getPrintedSize`, `getImageCenter`), por isso a prévia do diálogo e o arquivo coincidem. Como a área já é medida em cm sobre a superfície desenrolada, a arte não tem a curvatura da caneca.
+
+- A imagem vem do arquivo original, decodificado em resolução cheia só no momento da exportação (o estado guarda uma referência ao arquivo, além da cópia de até 4096 px usada na cena). Quando a saída é menor que a imagem, a redução é feita em etapas de 2×2; quando é maior, a imagem é ampliada uma única vez.
+- Resoluções: *Original* (a densidade da própria imagem: cada pixel dela vira um pixel do arquivo), *Alta* (o dobro), *Para impressão* (largura em cm e resolução em dpi; a altura acompanha a proporção da área, e o valor inicial é a medida da área nesta caneca de referência) e *Personalizada* (largura ou altura em pixels). A resolução de saída não depende da tela, do zoom nem do canvas 3D. O diálogo mostra o tamanho final e avisa quando a imagem será ampliada (a ampliação não cria detalhes) ou quando o pedido passa do limite do dispositivo (`EXPORT_LIMITS`: 16.384 px por lado e 40 MP, ou 16 MP em telas de toque), caso em que o tamanho é reduzido.
+- Formatos: PNG (padrão, sem perdas, com transparência), JPEG (qualidade ajustável; as áreas vazias recebem uma cor de fundo escolhida) e WebP (qualidade ajustável, com transparência; desativado nos navegadores que não o geram). A transparência da imagem e as sobras da área são preservadas, a menos que o usuário escolha um fundo sólido. A resolução física (dpi) é gravada no PNG (bloco `pHYs`) e no JPEG (cabeçalho JFIF), para que editores e softwares de impressão abram a arte no tamanho certo.
+- Saídas grandes são desenhadas em faixas, com pausas entre elas, para a interface não travar; fechar o diálogo cancela a exportação. Exportar não altera a personalização.
 
 **Desempenho.** A cena só é renderizada quando algo muda (`frameloop="demand"`). Texturas e canvases de imagens substituídas ou removidas são liberados. Imagens grandes são reduzidas em etapas para no máximo 4096 px (2048 px em dispositivos de toque); a resolução original continua sendo usada no cálculo de qualidade de impressão.
 

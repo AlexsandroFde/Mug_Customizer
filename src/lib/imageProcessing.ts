@@ -49,11 +49,20 @@ function fitWithin(width: number, height: number, maxSide: number) {
   return { width: Math.max(1, Math.round(width * scale)), height: Math.max(1, Math.round(height * scale)) }
 }
 
+export interface SteppedImage {
+  image: CanvasImageSource
+  width: number
+  height: number
+  /** Libera o canvas intermediário, se algum foi criado. */
+  release(): void
+}
+
 /**
- * Redimensiona em etapas de metade do tamanho. Cada etapa equivale a uma média 2×2,
- * o que evita o serrilhado de uma redução grande feita de uma só vez.
+ * Reduz em etapas de metade do tamanho enquanto a imagem tiver pelo menos o dobro do alvo.
+ * Cada etapa equivale a uma média 2×2, o que evita o serrilhado de uma redução grande feita
+ * de uma só vez; a última redução (menos de 2×) fica para quem desenha a imagem.
  */
-function resize(source: CanvasImageSource, width: number, height: number, targetWidth: number, targetHeight: number) {
+export function stepDown(source: CanvasImageSource, width: number, height: number, targetWidth: number, targetHeight: number): SteppedImage {
   let current: CanvasImageSource = source
   let currentWidth = width
   let currentHeight = height
@@ -69,9 +78,15 @@ function resize(source: CanvasImageSource, width: number, height: number, target
     currentHeight = next.height
   }
 
+  const created = intermediate
+  return { image: current, width: currentWidth, height: currentHeight, release: () => created && releaseCanvas(created) }
+}
+
+function resize(source: CanvasImageSource, width: number, height: number, targetWidth: number, targetHeight: number) {
+  const stepped = stepDown(source, width, height, targetWidth, targetHeight)
   const output = createCanvas(targetWidth, targetHeight)
-  getContext(output).drawImage(current, 0, 0, targetWidth, targetHeight)
-  if (intermediate) releaseCanvas(intermediate)
+  getContext(output).drawImage(stepped.image, 0, 0, targetWidth, targetHeight)
+  stepped.release()
   return output
 }
 
@@ -88,7 +103,8 @@ function detectTransparency(source: HTMLCanvasElement) {
   return false
 }
 
-async function decodeImage(file: Blob) {
+/** Decodifica o arquivo em resolução cheia, com a orientação EXIF aplicada (como no envio). */
+export async function decodeImage(file: Blob) {
   const url = URL.createObjectURL(file)
   const image = new Image()
   image.decoding = 'async'

@@ -35,6 +35,8 @@ interface MugViewerProps {
   /** Guias de edição (limites, área e contorno da imagem) desenhadas na caneca. */
   guidesVisible: boolean
   onToggleGuides(): void
+  onSavePhoto(): void
+  savingPhoto: boolean
   loadingFileName: string | null
   onPrintMove(offset: Pick<PrintTransform, 'offsetX' | 'offsetY'>, kind: ChangeKind): void
   onDraggingChange(dragging: boolean): void
@@ -58,6 +60,8 @@ export const MugViewer = forwardRef<MugViewerHandle, MugViewerProps>(function Mu
     onModeChange,
     guidesVisible,
     onToggleGuides,
+    onSavePhoto,
+    savingPhoto,
     loadingFileName,
     onPrintMove,
     onDraggingChange,
@@ -211,6 +215,8 @@ export const MugViewer = forwardRef<MugViewerHandle, MugViewerProps>(function Mu
         onZoom={zoom}
         guidesVisible={guidesVisible}
         onToggleGuides={onToggleGuides}
+        onSavePhoto={onSavePhoto}
+        savingPhoto={savingPhoto}
         showIntroHint={!interacted}
         hoveredPart={picking ? hoveredPart : null}
         loadingFileName={loadingFileName}

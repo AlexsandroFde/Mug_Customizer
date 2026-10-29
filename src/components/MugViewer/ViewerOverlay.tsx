@@ -15,6 +15,9 @@ interface ViewerOverlayProps {
   onZoom(direction: 1 | -1): void
   guidesVisible: boolean
   onToggleGuides(): void
+  /** Baixa uma foto da vista atual da caneca (PNG). */
+  onSavePhoto(): void
+  savingPhoto: boolean
   /** Dica de uso inicial, até a primeira vez que o usuário gira ou aproxima a caneca. */
   showIntroHint: boolean
   /** Parte sob o ponteiro quando a seleção de partes está ativa. */
@@ -65,6 +68,8 @@ export function ViewerOverlay({
   onZoom,
   guidesVisible,
   onToggleGuides,
+  onSavePhoto,
+  savingPhoto,
   showIntroHint,
   hoveredPart,
   loadingFileName,
@@ -107,6 +112,16 @@ export function ViewerOverlay({
         >
           <Icon name={guidesVisible ? 'eye' : 'eyeOff'} size={17} />
           <span className="toolbar__label">Guias</span>
+        </button>
+        <button
+          type="button"
+          className="toolbar__button"
+          onClick={onSavePhoto}
+          disabled={savingPhoto}
+          aria-label="Baixar foto da caneca"
+          title="Baixar foto da caneca (PNG, como aparece na tela)"
+        >
+          {savingPhoto ? <span className="spinner spinner--sm" aria-hidden="true" /> : <Icon name="camera" size={18} />}
         </button>
       </div>
 

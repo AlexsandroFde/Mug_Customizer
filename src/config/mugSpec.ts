@@ -119,6 +119,19 @@ export const IMAGE_LIMITS = {
 /** Maior lado da textura enviada à GPU (dispositivos de toque costumam ter menos memória). */
 export const TEXTURE_MAX_SIDE = { default: 4096, touch: 2048 } as const
 
+/**
+ * Limites da arte exportada. O lado máximo é o que os navegadores aceitam num canvas; a área
+ * máxima evita esgotar a memória (no Safari do iPhone, canvas acima de ~16,7 MP falham).
+ */
+export const EXPORT_LIMITS = {
+  maxSide: 16384,
+  maxPixels: { default: 40_000_000, touch: 16_000_000 },
+  minSide: 16,
+  dpi: { min: 72, max: 1200, default: 300 },
+  /** Largura física aceita no modo de impressão, em cm. */
+  printWidth: { min: 1, max: 200 },
+} as const
+
 /** Limites da escala da estampa, relativos ao tamanho de encaixe. */
 export const SCALE_RANGE = { min: 0.1, max: 4 } as const
 

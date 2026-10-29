@@ -40,6 +40,11 @@ export interface PrintImage {
   originalHeight: number
   /** Proporção largura/altura. */
   aspect: number
+  /**
+   * Arquivo original, usado na exportação em resolução cheia. É só uma referência ao arquivo
+   * escolhido (o navegador não o carrega na memória até que seja lido).
+   */
+  file: Blob
   /** Imagem pronta para virar textura (lado maior limitado). */
   source: HTMLCanvasElement
   thumbnailUrl: string
@@ -257,6 +262,7 @@ export function useMugCustomization() {
         type: 'upload-success',
         image: {
           id: nextImageId.current++,
+          file,
           fileName: file.name,
           fileSize: file.size,
           format: header.format,

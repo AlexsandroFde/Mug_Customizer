@@ -16,7 +16,7 @@ import { prefersDarkForeground } from '../../lib/color'
 import { ColorPicker } from '../ui/ColorPicker'
 import { Icon } from '../ui/Icon'
 import { Switch } from '../ui/Switch'
-import { HexColorField } from './HexColorField'
+import { HexColorField } from '../ui/HexColorField'
 
 interface MugColorEditorProps {
   colors: MugColorSettings

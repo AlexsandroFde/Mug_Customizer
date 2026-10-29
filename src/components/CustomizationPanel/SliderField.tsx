@@ -1,6 +1,6 @@
 import { useId, type CSSProperties, type ReactNode } from 'react'
 import { snapValue } from '../../lib/printMapping'
-import { NumberField } from './NumberField'
+import { NumberField } from '../ui/NumberField'
 
 interface SliderFieldProps {
   label: string

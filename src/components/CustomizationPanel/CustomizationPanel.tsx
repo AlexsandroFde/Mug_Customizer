@@ -52,8 +52,8 @@ interface CustomizationPanelProps {
   /** Ações gerais, no rodapé. */
   pristine: boolean
   onResetAll(): void
-  exporting: boolean
-  onExport(): void
+  /** Abre o diálogo de exportação da estampa. */
+  onOpenExport(): void
 }
 
 const TABS: ReadonlyArray<TabItem<PanelTab>> = [
@@ -78,8 +78,7 @@ export function CustomizationPanel({
   onLayoutDraggingChange,
   pristine,
   onResetAll,
-  exporting,
-  onExport,
+  onOpenExport,
 }: CustomizationPanelProps) {
   const { image, transform, area, upload, colors } = state
 
@@ -204,9 +203,9 @@ export function CustomizationPanel({
           <Icon name="reset" size={18} />
           Redefinir
         </button>
-        <button type="button" className="button button--primary" onClick={onExport} disabled={exporting} aria-busy={exporting}>
-          {exporting ? <span className="spinner spinner--sm spinner--inverse" aria-hidden="true" /> : <Icon name="download" size={18} />}
-          {exporting ? 'Gerando imagem…' : 'Baixar imagem'}
+        <button type="button" className="button button--primary" onClick={onOpenExport} aria-haspopup="dialog">
+          <Icon name="download" size={18} />
+          Exportar estampa
         </button>
       </footer>
     </div>
